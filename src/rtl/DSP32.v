@@ -153,7 +153,7 @@ module DSP32(
 		.dout(dout)
 	);
 	
-	always @(op, S, D, S16, D16, instr1, sumdiff, mul) begin
+	always @(op, S, D, CF, S16, D16, instr1, sumdiff, mul) begin
       res = 32'hxxxxxxxx;
 		case(op)
 			0: res = S;

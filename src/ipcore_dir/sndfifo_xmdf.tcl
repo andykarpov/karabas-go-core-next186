@@ -227,6 +227,10 @@ utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path sndfifo.ngc
 utilities_xmdf::xmdfSetData $instance FileSet $fcount type ngc
 incr fcount
 
+utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path sndfifo.sym
+utilities_xmdf::xmdfSetData $instance FileSet $fcount type symbol
+incr fcount
+
 utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path sndfifo.v
 utilities_xmdf::xmdfSetData $instance FileSet $fcount type verilog
 incr fcount

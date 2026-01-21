@@ -53,7 +53,8 @@ module unit186(
 		output wire [3:0]WMASK,
 		output wire [15:0]PORT_ADDR,
 		output wire [3:0]SEG_ADDR,
-		
+
+		input wire FAKE286,
 		input wire CLK,
 		input wire CE,
 		output wire  CPU_CE,
@@ -130,6 +131,7 @@ module unit186(
 
 	Next186_CPU cpu 
 	(
+		 .FAKE286(FAKE286),
 		 .ADDR(CPU_ADDR), 
 		 .PORT_ADDR(PORT_ADDR),
 		 .DIN(IORQ | INTA ? INPORT : CPU_DIN), 

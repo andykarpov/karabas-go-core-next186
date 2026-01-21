@@ -70,17 +70,17 @@ module dcm_dsp_tb ();
   // how many cycles to run
   localparam  COUNT_PHASE = 1024;
   // we'll be using the period in many locations
-  localparam time PER1    = 20.0*ONE_NS;
+  localparam time PER1    = 20.000*ONE_NS;
   localparam time PER1_1  = PER1/2;
   localparam time PER1_2  = PER1 - PER1/2;
 
   // Declare the input clock signals
   reg         CLK_IN1     = 1;
 
-  // The high bit of the sampling counter
-  wire        COUNT;
+  // The high bits of the sampling counters
+  wire [2:1]  COUNT;
   reg         COUNTER_RESET = 0;
-wire [1:1] CLK_OUT;
+wire [2:1] CLK_OUT;
 //Freq Check using the M & D values setting and actual Frequency generated 
 
   reg [13:0]  timeout_counter = 14'b00000000000000;

@@ -37,7 +37,6 @@
 `timescale 1ns/1ps
 
 module sndfifo(
-  rst,
   wr_clk,
   rd_clk,
   din,
@@ -46,11 +45,10 @@ module sndfifo(
   dout,
   full,
   empty,
-  prog_full,
-  prog_empty
+  rd_data_count,
+  wr_data_count
 );
 
-input rst;
 input wr_clk;
 input rd_clk;
 input [31 : 0] din;
@@ -59,8 +57,8 @@ input rd_en;
 output [31 : 0] dout;
 output full;
 output empty;
-output prog_full;
-output prog_empty;
+output [11 : 0] rd_data_count;
+output [11 : 0] wr_data_count;
 
 // synthesis translate_off
 
@@ -111,7 +109,7 @@ output prog_empty;
     .C_ERROR_INJECTION_TYPE_WDCH(0),
     .C_ERROR_INJECTION_TYPE_WRCH(0),
     .C_FAMILY("spartan6"),
-    .C_FULL_FLAGS_RST_VAL(1),
+    .C_FULL_FLAGS_RST_VAL(0),
     .C_HAS_ALMOST_EMPTY(0),
     .C_HAS_ALMOST_FULL(0),
     .C_HAS_AXI_ARUSER(0),
@@ -147,15 +145,15 @@ output prog_empty;
     .C_HAS_PROG_FLAGS_WACH(0),
     .C_HAS_PROG_FLAGS_WDCH(0),
     .C_HAS_PROG_FLAGS_WRCH(0),
-    .C_HAS_RD_DATA_COUNT(0),
+    .C_HAS_RD_DATA_COUNT(1),
     .C_HAS_RD_RST(0),
-    .C_HAS_RST(1),
+    .C_HAS_RST(0),
     .C_HAS_SLAVE_CE(0),
     .C_HAS_SRST(0),
     .C_HAS_UNDERFLOW(0),
     .C_HAS_VALID(0),
     .C_HAS_WR_ACK(0),
-    .C_HAS_WR_DATA_COUNT(0),
+    .C_HAS_WR_DATA_COUNT(1),
     .C_HAS_WR_RST(0),
     .C_IMPLEMENTATION_TYPE(2),
     .C_IMPLEMENTATION_TYPE_AXIS(1),
@@ -174,30 +172,30 @@ output prog_empty;
     .C_PRELOAD_LATENCY(1),
     .C_PRELOAD_REGS(0),
     .C_PRIM_FIFO_TYPE("4kx9"),
-    .C_PROG_EMPTY_THRESH_ASSERT_VAL(90),
+    .C_PROG_EMPTY_THRESH_ASSERT_VAL(2),
     .C_PROG_EMPTY_THRESH_ASSERT_VAL_AXIS(1022),
     .C_PROG_EMPTY_THRESH_ASSERT_VAL_RACH(1022),
     .C_PROG_EMPTY_THRESH_ASSERT_VAL_RDCH(1022),
     .C_PROG_EMPTY_THRESH_ASSERT_VAL_WACH(1022),
     .C_PROG_EMPTY_THRESH_ASSERT_VAL_WDCH(1022),
     .C_PROG_EMPTY_THRESH_ASSERT_VAL_WRCH(1022),
-    .C_PROG_EMPTY_THRESH_NEGATE_VAL(91),
-    .C_PROG_EMPTY_TYPE(1),
+    .C_PROG_EMPTY_THRESH_NEGATE_VAL(3),
+    .C_PROG_EMPTY_TYPE(0),
     .C_PROG_EMPTY_TYPE_AXIS(0),
     .C_PROG_EMPTY_TYPE_RACH(0),
     .C_PROG_EMPTY_TYPE_RDCH(0),
     .C_PROG_EMPTY_TYPE_WACH(0),
     .C_PROG_EMPTY_TYPE_WDCH(0),
     .C_PROG_EMPTY_TYPE_WRCH(0),
-    .C_PROG_FULL_THRESH_ASSERT_VAL(2940),
+    .C_PROG_FULL_THRESH_ASSERT_VAL(4093),
     .C_PROG_FULL_THRESH_ASSERT_VAL_AXIS(1023),
     .C_PROG_FULL_THRESH_ASSERT_VAL_RACH(1023),
     .C_PROG_FULL_THRESH_ASSERT_VAL_RDCH(1023),
     .C_PROG_FULL_THRESH_ASSERT_VAL_WACH(1023),
     .C_PROG_FULL_THRESH_ASSERT_VAL_WDCH(1023),
     .C_PROG_FULL_THRESH_ASSERT_VAL_WRCH(1023),
-    .C_PROG_FULL_THRESH_NEGATE_VAL(2939),
-    .C_PROG_FULL_TYPE(1),
+    .C_PROG_FULL_THRESH_NEGATE_VAL(4092),
+    .C_PROG_FULL_TYPE(0),
     .C_PROG_FULL_TYPE_AXIS(0),
     .C_PROG_FULL_TYPE_RACH(0),
     .C_PROG_FULL_TYPE_RDCH(0),
@@ -256,7 +254,6 @@ output prog_empty;
     .C_WRCH_TYPE(0)
   )
   inst (
-    .RST(rst),
     .WR_CLK(wr_clk),
     .RD_CLK(rd_clk),
     .DIN(din),
@@ -265,11 +262,12 @@ output prog_empty;
     .DOUT(dout),
     .FULL(full),
     .EMPTY(empty),
-    .PROG_FULL(prog_full),
-    .PROG_EMPTY(prog_empty),
+    .RD_DATA_COUNT(rd_data_count),
+    .WR_DATA_COUNT(wr_data_count),
     .BACKUP(),
     .BACKUP_MARKER(),
     .CLK(),
+    .RST(),
     .SRST(),
     .WR_RST(),
     .RD_RST(),
@@ -289,8 +287,8 @@ output prog_empty;
     .VALID(),
     .UNDERFLOW(),
     .DATA_COUNT(),
-    .RD_DATA_COUNT(),
-    .WR_DATA_COUNT(),
+    .PROG_FULL(),
+    .PROG_EMPTY(),
     .SBITERR(),
     .DBITERR(),
     .M_ACLK(),

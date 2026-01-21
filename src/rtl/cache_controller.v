@@ -48,29 +48,36 @@
 `define WAYS	2	// 2^ways
 `define SETS	5	// 2^sets
 `define LINE	6	// 2^LINE bytes / cache line
-`define ADDR	21
+`define ADDR	25
 
 // bios loader experiment. 
 // also needs to be disabled in cache conctoller
 `define BIOS_LOADER
 
 module cache_controller(
+     // CPU side
+	 input wire clk,
 	 input wire [`ADDR-1:0]addr,
-    output wire [31:0]dout,
+     output wire [31:0]dout,
 	 input wire [31:0]din,
-	 input wire clk,	
 	 input wire mreq,
 	 input wire [3:0]wmask,
 	 output reg ce = 1'b1,	// clock enable for CPU
+     input wire [4:0] cpu_speed, // 0 - Maximum 1,2,3...15 - divide by 1,2,3...16
+
+     // VGA snoop
+     input wire [`ADDR-1:0] vga_addr,
+     output wire vga_in_cache,
+
+     // RAM side
+	 input wire ddr_clk,
 	 input wire [15:0]ddr_din,
 	 output reg[15:0]ddr_dout,
-	 input wire ddr_clk,
 	 input wire cache_write_data, // 1 when data must be written to cache, on posedge ddr_clk
 	 input wire cache_read_data, // 1 when data must be read from cache, on posedge ddr_clk
 	 output reg ddr_rd = 0,
 	 output reg ddr_wr = 0,
-	 output reg [`ADDR-`LINE-1:0]hiaddr,
-	 input wire flush
+	 output reg [`ADDR-`LINE-1:0]hiaddr
     );
 	
 	initial ce = 1'b1;
@@ -90,34 +97,6 @@ module cache_controller(
 	wire [`SETS-1:0]index = r_flush ? flushcount[`SETS-1:0] : maddr[`LINE+`SETS-1:`LINE];
 	wire [(1<<`WAYS)-1:0]fit;
 	wire [(1<<`WAYS)-1:0]free;
-	
-// for SETS=5
-/*	
-	reg [(1<<`WAYS)-1:0]cache_dirty[0:(1<<`SETS)-1] = 
-		{4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0,
-		 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0,
-		 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0,
-`ifndef BIOS_LOADER
-		 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1, 4'h1}; //enable bootloader
-`else
-		 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0, 4'h0}; //disable bootloader
-`endif
- 
-	reg [`WAYS-1:0]cache_lru[0:(1<<`WAYS)-1][0:(1<<`SETS)-1] =
-		{{2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0, 2'h0},
-		 {2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1, 2'h1},
-		 {2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2, 2'h2},
-		 {2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3, 2'h3}};
-	reg [`ADDR-`SETS-`LINE-1:0]cache_addr[0:(1<<`WAYS)-1][0:(1<<`SETS)-1]=
-`ifndef BIOS_LOADER
-		{{9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff, 9'h0ff}, // enable bootloader
-`else
-		{{9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000}, // disable bootloader
-`endif
-		 {9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000, 9'h000},
-		 {9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001, 9'h001},
-		 {9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h003, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002, 9'h002}};
-*/
 
 // for SETS=5
 	reg [(1<<`WAYS)-1:0]cache_dirty[0:(1<<`SETS)-1] = 
@@ -148,17 +127,29 @@ module cache_controller(
 	wire [31:0]cache_QA;
 	wire [`WAYS-1:0]lru[(1<<`WAYS)-1:0];
 
+	reg [4:0] ce_div;
+
 	genvar i;
 	for(i=0; i<(1<<`WAYS); i=i+1) begin
 		assign fit[i] = ~r_flush && (cache_addr[i][index] == maddr[`ADDR-1:`LINE+`SETS]);
 		assign free[i] = r_flush ? (flushcount[`WAYS+`SETS-1:`SETS] == i) : ~|cache_lru[i][index];
 		assign lru[i] = {`WAYS{fit[i]}} & cache_lru[i][index];
+		assign vga_fit[i] = cache_addr[i][vga_index] == vga_addr_r[`ADDR-1:`LINE+`SETS];
 	end
 
 	wire hit = |fit;
+
 	wire st0 = STATE == 3'b000;
 //	assign ce = st0 && (~mreq || hit);
 	wire dirty = |(free & cache_dirty[index]);	
+
+	reg  [`ADDR-1:0] vga_addr_r;
+	always @(posedge clk) vga_addr_r <= vga_addr;
+	wire [(1<<`WAYS)-1:0]vga_fit;
+	wire [`SETS-1:0]vga_index = vga_addr_r[`LINE+`SETS-1:`LINE];
+	wire vga_dirty = |cache_dirty[vga_index] /* synthesis keep */;
+	wire vga_hit = |vga_fit /* synthesis keep */;
+	assign vga_in_cache = vga_dirty & vga_hit;
 
 	wire [`WAYS-1:0]blk = flushcount[`WAYS+`SETS-1:`SETS] | {|fit[3:2], fit[3] | fit[1]};
 	wire [`WAYS-1:0]fblk = {|free[3:2], free[3] | free[1]};
@@ -186,37 +177,44 @@ module cache_controller(
 	);
 
 
-	for(i=0; i<(1<<`WAYS); i=i+1)
-		always @(posedge clk)
-			if(st0 && mmreq)
+	for(i=0; i<(1<<`WAYS); i=i+1) begin
+		always @(posedge clk) 
+			if(st0 && mmreq) begin
 				if(hit) begin
 					cache_lru[i][index] <= fit[i] ? {`WAYS{1'b1}} : cache_lru[i][index] - (cache_lru[i][index] > csblk); 
 					if(fit[i]) cache_dirty[index][i] <= cache_dirty[index][i] || (|mwmask);
-				end else if(free[i]) cache_dirty[index][i] <= 1'b0;
-
+				end
+				else if(free[i]) cache_dirty[index][i] <= 1'b0;
+			end
+			else if(st0 && r_flush && free[i]) cache_dirty[index][i] <= 1'b0;
+	end
 		
 	always @(posedge clk) begin
+		ce_div <= ce_div + 1'd1;
+		if (ce_div == cpu_speed) ce_div <= 0;
+
 		s_lowaddr5 <= lowaddr[`LINE-2];
-		flushreq <= ~flushcount[`WAYS+`SETS] & (flushreq | flush);
+		flushreq <= ~r_flush & (flushreq | vga_in_cache);
+		if (~r_flush & vga_in_cache) flushcount[`WAYS+`SETS-1:0] <= vga_index;
 		if(ce) begin
 			raddr <= addr;
 			rdin <= din;
 			rwmask <= wmask;
 			rmreq <= mreq;
 		end
-		
+
 		case(STATE)
 			3'b000: begin
-				hiaddr <= dirty ? {cache_addr[fblk][index], index} : maddr[`ADDR-1:`LINE]; 
-				if(mmreq && !hit) begin	// cache miss
+				ce <= 1'b0;
+				hiaddr <= dirty ? {cache_addr[fblk][index], index} : maddr[`ADDR-1:`LINE];
+				if(r_flush || (mmreq && !hit)) begin // cache miss or flush
 					if(!r_flush) cache_addr[fblk][index] <= maddr[`ADDR-1:`LINE+`SETS];
 					ddr_rd <= ~dirty & ~r_flush;
 					ddr_wr <= dirty;
 					STATE <= dirty ? 3'b011 : 3'b100;
-					ce <= 1'b0;
 				end else begin
-					flushcount[`WAYS+`SETS] <= flushcount[`WAYS+`SETS] | flushreq;
-					ce <= 1'b1;
+					flushcount[`WAYS+`SETS] <= r_flush | flushreq;
+					ce <= ce_div == 0;
 				end
 			end
 			3'b011: begin	// write cache to ddr
@@ -232,15 +230,15 @@ module cache_controller(
 			end
 			3'b100: begin	
 				if(r_flush) begin
-					flushcount <= flushcount + 1'b1;
+					flushcount[`WAYS+`SETS:`SETS] <= flushcount[`WAYS+`SETS:`SETS] + 1'b1;
 					STATE <= 3'b000;
-				end else if(s_lowaddr5) STATE <= 3'b101;
+				end else if(s_lowaddr5) begin
+					ddr_rd <= 1'b0;
+					STATE <= 3'b101;
+				end
 			end
 			3'b101: begin
-				ddr_rd <= 1'b0;
-				if(~s_lowaddr5) begin
-					STATE <= 3'b000;
-				end
+				if(~s_lowaddr5) STATE <= 3'b000;
 			end
 		endcase
 	end
@@ -251,7 +249,7 @@ endmodule
 module seg_map(
 	 input wire CLK,
 	 input wire [3:0]cpuaddr,
-	 output wire [8:0]cpurdata,
+	 output reg [8:0]cpurdata,
 	 input wire [8:0]cpuwdata,
 	 input wire [4:0]memaddr,
 	 output wire [8:0]memdata,
@@ -268,16 +266,14 @@ module seg_map(
 								 9'h00a, 9'h00b, 9'h00c, 9'h00d, 9'h00e, 9'h00f}; // VGA seg 1..6								 
 	reg [15:0]vga_seg = 16'h0000;
 	assign memdata = map[memaddr];
-	assign cpurdata = map[{1'b0, cpuaddr}];
 	assign vga_planar_seg = vga_seg[seg_addr];
-//	initial $readmemh("segmap.mem", map);
 	
 	always @(posedge CLK) begin
 		if(WE) begin
 			map[{1'b0, cpuaddr}] <= cpuwdata;
 			vga_seg[cpuaddr] <= cpuwdata == 9'ha;
 		end
-		//cpurdata <= map[{1'b0, cpuaddr}];
+		cpurdata <= map[{1'b0, cpuaddr}]; // cpuaddr is constrained at 2T multicycle, but here it should be ready after 1T!!!
 	end
 
 endmodule

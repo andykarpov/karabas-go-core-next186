@@ -1,16 +1,22 @@
 {
     "id": "next186",
     "name": "Next 186",
-    "build": "26011923",
+    "build": "26012102",
     "bitstream": "karabas_mini_top.bin",
     "visible": true,
     "type": "none",
     "order": 6,
     "eeprom_bank": 255,
     "roms": [
-        {"filename": "software/BIOS/BIOS_Next186.com", "address": 0}
+        {"filename": "186Code/BIOS/Next186.ROM", "address": 0}
     ],
     "osd": [
+        {"type": "S", "name": "Speed", "options": ["Max", "/2", "/3", "/4", "/8", "/16", "/32"], "default": 0, "hotkey": "Menu+F1"},
+        {"type": "S", "name": "ISA Wait", "options": ["1us", "2us", "3us", "4us"], "default": 0, "hotkey": "Menu+F2"},
+        {"type": "S", "name": "Fake 286", "options": ["Off", "On"], "default": 0, "hotkey": "Menu+F3"},
+        {"type": "S", "name": "Joy swap", "options": ["Off", "On"], "default": 0, "hotkey": "Menu+F4"},
+        {"type": "S", "name": "MIDI", "options": ["MPU401", "UART"], "default": 0, "hotkey": "Menu+F5"},
+        {"type": "S", "name": "Adlib", "options": ["On", "Hidden"], "default": 0, "hotkey": "Menu+F6"},
         {"type": "T", "name": "NMI", "options": null, "default": 0, "hotkey": "Menu+F12"},
         {"type": "T", "bits": 1, "name": "Reset", "options": null, "default": 0, "hotkey": "Ctrl+Alt+Del"}
     ]

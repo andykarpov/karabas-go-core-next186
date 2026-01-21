@@ -1,0 +1,2 @@
+[console_scripts]
+bin2coe = bin2coe.cli:main

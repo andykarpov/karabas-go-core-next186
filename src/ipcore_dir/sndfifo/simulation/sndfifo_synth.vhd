@@ -97,9 +97,8 @@ ARCHITECTURE simulation_arch OF sndfifo_synth IS
     -- FIFO interface signal declarations
     SIGNAL wr_clk_i                       :   STD_LOGIC;
     SIGNAL rd_clk_i                       :   STD_LOGIC;
-    SIGNAL rst	                          :   STD_LOGIC;
-    SIGNAL prog_full                      :   STD_LOGIC;
-    SIGNAL prog_empty                     :   STD_LOGIC;
+    SIGNAL wr_data_count                  :   STD_LOGIC_VECTOR(12-1 DOWNTO 0);
+    SIGNAL rd_data_count                  :   STD_LOGIC_VECTOR(12-1 DOWNTO 0);
     SIGNAL wr_en                          :   STD_LOGIC;
     SIGNAL rd_en                          :   STD_LOGIC;
     SIGNAL din                            :   STD_LOGIC_VECTOR(32-1 DOWNTO 0);
@@ -166,38 +165,8 @@ ARCHITECTURE simulation_arch OF sndfifo_synth IS
        rst_async_wr3  <= rst_async_wr2;
      END IF;
    END PROCESS;
-
-   --Soft reset for core and testbench
-   PROCESS(rd_clk_i)
-   BEGIN 
-     IF(rd_clk_i'event AND rd_clk_i='1') THEN
-       rst_gen_rd      <= rst_gen_rd + "1";
-       IF(reset_en = '1' AND AND_REDUCE(rst_gen_rd) = '1') THEN
-         rst_s_rd      <= '1';
-         assert false
-         report "Reset applied..Memory Collision checks are not valid"
-         severity note;
-       ELSE
-         IF(AND_REDUCE(rst_gen_rd)  = '1' AND rst_s_rd = '1') THEN
-           rst_s_rd    <= '0';
-         END IF;
-       END IF;
-     END IF;
-   END PROCESS;
-   
-   PROCESS(wr_clk_i)
-   BEGIN 
-       IF(wr_clk_i'event AND wr_clk_i='1') THEN
-         rst_s_wr1   <= rst_s_rd; 
-         rst_s_wr2   <= rst_s_wr1; 
-         rst_s_wr3   <= rst_s_wr2;
-         IF(rst_s_wr3 = '1' AND rst_s_wr2 = '0') THEN
-           assert false
-           report "Reset removed..Memory Collision checks are valid"
-           severity note;
-         END IF;
-       END IF;
-   END PROCESS;
+   rst_s_wr3   <= '0';
+   rst_s_rd    <= '0';
    ------------------
    
    ---- Clock buffers for testbench ----
@@ -205,7 +174,6 @@ ARCHITECTURE simulation_arch OF sndfifo_synth IS
   rd_clk_i <= RD_CLK;
    ------------------
      
-    rst                       <=   RESET OR rst_s_rd AFTER 12 ns;
     din                       <=   wr_data;
     dout_i                    <=   dout;
     wr_en                     <=   wr_en_i;
@@ -287,9 +255,8 @@ ARCHITECTURE simulation_arch OF sndfifo_synth IS
     PORT MAP (
            WR_CLK                    => wr_clk_i,
            RD_CLK                    => rd_clk_i,
-           RST                       => rst,
-           PROG_FULL                 => prog_full,
-           PROG_EMPTY                => prog_empty,
+           WR_DATA_COUNT             => wr_data_count,
+           RD_DATA_COUNT             => rd_data_count,
            WR_EN 		     => wr_en,
            RD_EN                     => rd_en,
            DIN                       => din,

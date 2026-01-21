@@ -1,4 +1,5 @@
 `timescale 1ns / 1ps
+`default_nettype none
 //////////////////////////////////////////////////////////////////////////////////
 //
 // This file is part of the Next186 Soc PC project
@@ -48,68 +49,77 @@
 // sample rate: 44100Hz
 //////////////////////////////////////////////////////////////////////////////////
 `define SPKVOL	11
-`default_nettype none
 
 module soundwave(
 		input wire CLK,
-		input wire CLK44100x256,
+		input wire clk_en,
 		input wire [15:0]data,
 		input wire we,
 		input wire word,
 		input wire speaker,
+		input wire [15:0]cdda_l,
+		input wire [15:0]cdda_r,
+        input wire [23:0] adc_l,
+        input wire [23:0] adc_r,
 		input wire [15:0]opl3left,
 		input wire [15:0]opl3right,
-		input wire [23:0] adc_l,
-		input wire [23:0] adc_r,
-		output wire stb44100,		
+		input wire [7:0]tandy_snd,
 		output wire full,	// when not full, write max 2x1152 16bit samples
 		output wire dss_full,
-		output reg [15:0] AUDIO_L,
-		output reg [15:0] AUDIO_R
+		output wire [15:0] laudio,
+		output wire [15:0] raudio,
+		output reg AUDIO_L,
+		output reg AUDIO_R
 	);
 
-	 reg [31:0]wdata;
-	 reg lr = 1'b0;
-	 reg [2:0]write = 3'b000;	 	 
-	 wire qempty;
-	 wire [31:0]sample;
-	 wire [31:0]sample1 = qempty ? 32'hc000c000 : sample;
-	 reg [31:0]lval = 0; 
-	 reg [31:0]rval = 0;
-	 reg [8:0]clkdiv = 0;
- 	 reg [15:0]r_opl3left = 0;
-	 reg [15:0]r_opl3right = 0;
-	 wire signed [15:0] lmix = $signed(sample1[15:0]) + $signed(r_opl3left) + $signed(adc_l[23:8]) + $signed(speaker << `SPKVOL); // signed mixer left
-	 wire signed [15:0] rmix = $signed(sample1[31:16]) + $signed(r_opl3right) + $signed(adc_r[23:8]) + $signed(speaker << `SPKVOL); // signed mixer right
-	 wire empty;
-	 assign dss_full = !empty;	// Disney sound source queue full
-	 assign stb44100 = clkdiv[8];
-	 
-	 sndfifo sndfifo_inst 
-	 (
-	  .wr_clk(CLK), // input wr_clk
-	  .rd_clk(CLK44100x256), // input rd_clk
-	  .din(wdata), // input [31 : 0] din
-	  .wr_en(|write), // input wr_en
-	  .rd_en(clkdiv[8]), // input rd_en
-	  .dout(sample), // output [31 : 0] dout
-	  .full(), // output full
-	  .empty(qempty), // output empty
-	  .prog_full(full), // output prog_full
-	  .prog_empty(empty)
+	reg [31:0]wdata;
+	reg lr = 1'b0;
+	reg [2:0]write = 3'b000;
+	wire qempty;
+	wire [31:0]sample;
+	wire [31:0]sample1 = qempty ? 32'hc000c000 : sample;
+	reg [31:0]lval = 0; 
+	reg [31:0]rval = 0;
+	reg [15:0]r_opl3left = 0;
+	reg [15:0]r_opl3right = 0;
+
+	wire [16:0]lmix = {adc_l[23], adc_l[23:8]} + {cdda_l[15], cdda_l[15:0]} + {sample1[15], sample1[15:0]} + {r_opl3left[15], r_opl3left} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer left
+	wire [16:0]rmix = {adc_r[23], adc_r[23:8]} + {cdda_r[15], cdda_r[15:0]} + {sample1[31], sample1[31:16]} + {r_opl3right[15], r_opl3right} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer right
+	wire [15:0]lclamp = (~|lmix[16:15] | &lmix[16:15]) ? {!lmix[15], lmix[14:0]} : {16{!lmix[16]}}; // clamp to [-32768..32767] and add 32878
+	wire [15:0]rclamp = (~|rmix[16:15] | &rmix[16:15]) ? {!rmix[15], rmix[14:0]} : {16{!rmix[16]}};
+	wire lsign = lval[31:16] < lclamp;
+	wire rsign = rval[31:16] < rclamp;
+	wire [11:0]wrusedw;
+	wire [11:0]rdusedw;
+	assign full = wrusedw >= 12'd2940;
+	assign dss_full = rdusedw > 12'd90;	// Disney sound source queue full
+	assign laudio = lclamp;
+	assign raudio = rclamp;
+
+	sndfifo sndfifo_inst 
+	(
+		.wr_clk(CLK), // input wr_clk
+		.rd_clk(CLK), // input rd_clk
+		.din(wdata), // input [31 : 0] din
+		.wr_en(|write), // input wr_en
+		.rd_en(clk_en), // input rd_en
+		.dout(sample), // output [31 : 0] dout
+		.wr_data_count(wrusedw),
+		.rd_data_count(rdusedw),
+		.empty(qempty) // output empty
 	);
-	 
-	 always @(posedge CLK44100x256) begin
-		clkdiv[8:0] <= clkdiv[7:0] + 1'b1;
-		if(clkdiv[8]) begin
-	       r_opl3left <= opl3left;
-           r_opl3right <= opl3right;
-		end
 
-		AUDIO_L <= lmix;
-		AUDIO_R <= rmix;
-	 end
 
+	always @(posedge CLK) begin
+		r_opl3left <= opl3left;
+		r_opl3right <= opl3right;
+
+		lval <= lval - lval[31:7] + (lsign << 25);
+		AUDIO_L <= lsign;
+
+		rval <= rval - rval[31:7] + (rsign << 25);
+		AUDIO_R <= rsign;
+	end
 
 	always @(posedge CLK) begin
 		if(we) 

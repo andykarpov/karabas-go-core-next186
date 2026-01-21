@@ -47,7 +47,7 @@
 # PART OF THIS FILE AT ALL TIMES.
 # 
 
-# nt
+# lin
 # create the project
 vlogcomp -work work ${XILINX}/verilog/src/glbl.v
 vlogcomp -work work ../../../dcm.v

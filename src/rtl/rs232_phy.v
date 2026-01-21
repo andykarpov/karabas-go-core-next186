@@ -1,4 +1,5 @@
 `timescale 1ns / 1ps
+`default_nettype none
 //////////////////////////////////////////////////////////////////////////////////
 //
 // This file is part of the Next186 Soc PC project
@@ -41,13 +42,13 @@
 // Additional Comments: 
 //
 //////////////////////////////////////////////////////////////////////////////////
-`default_nettype none
+
 
 module rs232_phy (
 		input wire CLK_18432000, 
 		input wire RS232_DCE_RXD,
 		output reg RS232_DCE_TXD,
-		input wire [16:0]div,
+		input wire [15:0]div,
 		output reg [7:0]rdata,
 		output reg rdata_rdy = 1'b0,	// when rdata_rdy=1, keep rd=1 until rdata_rdy=0. (!)asserted on the same clock edge as rdata
 		output reg rdata_ovr = 1'b0,	// data override (resets when rd=1)
@@ -66,7 +67,7 @@ module rs232_phy (
 	reg sending = 1'b0;
 	reg swr = 1'b0;
 	reg sRS232_DCE_RXD = 1'b0;
-	wire [16:0]cnt1 = cnt + 1'b1;
+	wire [15:0]cnt1 = cnt + 1'b1;
 	wire ce = cnt1 == div;
 	wire [9:0]wdata2 = {1'b1, wdata1, 1'b0};
 		

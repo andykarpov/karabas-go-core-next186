@@ -215,12 +215,12 @@ utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path cache.asy
 utilities_xmdf::xmdfSetData $instance FileSet $fcount type asy
 incr fcount
 
-utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path cache.mif
-utilities_xmdf::xmdfSetData $instance FileSet $fcount type AnyView
-incr fcount
-
 utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path cache.ngc
 utilities_xmdf::xmdfSetData $instance FileSet $fcount type ngc
+incr fcount
+
+utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path cache.sym
+utilities_xmdf::xmdfSetData $instance FileSet $fcount type symbol
 incr fcount
 
 utilities_xmdf::xmdfSetData $instance FileSet $fcount relative_path cache.v

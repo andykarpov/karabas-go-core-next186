@@ -56,7 +56,6 @@
 #--------------------------------------------------------------------------------
 wcfg new
 isim set radix hex
-wave add /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/RST
 wave add /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/WR_CLK
 wave add /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/WR_EN
 wave add /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/FULL

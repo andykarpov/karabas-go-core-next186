@@ -1,7 +1,7 @@
 ##############################################################
 #
 # Xilinx Core Generator version 14.7
-# Date: Fri Jan 16 01:26:16 2026
+# Date: Tue Jan 20 21:19:48 2026
 #
 ##############################################################
 #
@@ -70,13 +70,13 @@ CSET clkin2_jitter_ps=100.0
 CSET clkin2_ui_jitter=0.010
 CSET clkout1_drives=BUFG
 CSET clkout1_requested_duty_cycle=50.0
-CSET clkout1_requested_out_freq=45.000
+CSET clkout1_requested_out_freq=14.7456
 CSET clkout1_requested_phase=0.000
 CSET clkout2_drives=BUFG
 CSET clkout2_requested_duty_cycle=50.0
-CSET clkout2_requested_out_freq=100.000
+CSET clkout2_requested_out_freq=12.000
 CSET clkout2_requested_phase=0.000
-CSET clkout2_used=false
+CSET clkout2_used=true
 CSET clkout3_drives=BUFG
 CSET clkout3_requested_duty_cycle=50.0
 CSET clkout3_requested_out_freq=100.000
@@ -102,7 +102,7 @@ CSET clkout7_requested_duty_cycle=50.0
 CSET clkout7_requested_out_freq=100.000
 CSET clkout7_requested_phase=0.000
 CSET clkout7_used=false
-CSET clock_mgr_type=MANUAL
+CSET clock_mgr_type=AUTO
 CSET component_name=dcm_dsp
 CSET daddr_port=DADDR
 CSET dclk_port=DCLK
@@ -119,9 +119,9 @@ CSET dcm_clkfx_multiply=4
 CSET dcm_clkgen_clk_out1_port=CLKFX
 CSET dcm_clkgen_clk_out2_port=CLKFX
 CSET dcm_clkgen_clk_out3_port=CLKFX
-CSET dcm_clkgen_clkfx_divide=10
+CSET dcm_clkgen_clkfx_divide=1
 CSET dcm_clkgen_clkfx_md_max=0.000
-CSET dcm_clkgen_clkfx_multiply=9
+CSET dcm_clkgen_clkfx_multiply=4
 CSET dcm_clkgen_clkfxdv_divide=2
 CSET dcm_clkgen_clkin_period=20.000
 CSET dcm_clkgen_notes=None
@@ -189,21 +189,21 @@ CSET mmcm_notes=None
 CSET mmcm_ref_jitter1=0.010
 CSET mmcm_ref_jitter2=0.010
 CSET mmcm_startup_wait=false
-CSET num_out_clks=1
+CSET num_out_clks=2
 CSET override_dcm=false
 CSET override_dcm_clkgen=false
 CSET override_mmcm=false
 CSET override_pll=false
-CSET platform=nt
+CSET platform=lin
 CSET pll_bandwidth=OPTIMIZED
 CSET pll_clk_feedback=CLKFBOUT
-CSET pll_clkfbout_mult=4
+CSET pll_clkfbout_mult=23
 CSET pll_clkfbout_phase=0.000
-CSET pll_clkin_period=10.000
-CSET pll_clkout0_divide=1
+CSET pll_clkin_period=20.000
+CSET pll_clkout0_divide=39
 CSET pll_clkout0_duty_cycle=0.500
 CSET pll_clkout0_phase=0.000
-CSET pll_clkout1_divide=1
+CSET pll_clkout1_divide=48
 CSET pll_clkout1_duty_cycle=0.500
 CSET pll_clkout1_phase=0.000
 CSET pll_clkout2_divide=1
@@ -219,7 +219,7 @@ CSET pll_clkout5_divide=1
 CSET pll_clkout5_duty_cycle=0.500
 CSET pll_clkout5_phase=0.000
 CSET pll_compensation=INTERNAL
-CSET pll_divclk_divide=1
+CSET pll_divclk_divide=2
 CSET pll_notes=None
 CSET pll_ref_jitter=0.010
 CSET power_down_port=POWER_DOWN
@@ -266,4 +266,4 @@ CSET use_status=false
 MISC pkg_timestamp=2012-05-10T12:44:55Z
 # END Extra information
 GENERATE
-# CRC: b8122104
+# CRC: 7bff33f0

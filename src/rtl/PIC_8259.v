@@ -12,6 +12,8 @@
 // Author: Nicolae Dumitrache 
 // e-mail: ndumitrache@opencores.org
 //
+// ISR added, switched to non-automatic end: July2021 Gyorgy Szombathelyi
+//
 /////////////////////////////////////////////////////////////////////////////////
 // 
 // Copyright (C) 2012 Nicolae Dumitrache
@@ -46,67 +48,141 @@
 `default_nettype none
 
 module PIC_8259(
-	 input wire RST,
-    input wire CS,
-	 input wire WR,
-	 input wire [7:0]din,
-	 input wire slave,
-	 output wire [7:0]dout,
-	 output reg [7:0]ivect,
-	 input wire clk,		// cpu CLK
-	 output reg INT = 0,
-	 input wire IACK,
-	 input wire [4:0]I	// 0:timer, 1:keyboard, 2:RTC, 3:mouse, 4:COM1
-    );
-	 
-	reg [4:0]ss_I = 0;
-	reg [4:0]s_I = 0;
-	reg [4:0]IMR = 5'b11111;
-	reg [4:0]IRR = 0;
-	
-	assign dout = slave ? {3'b000, IMR[3], 3'b000, IMR[2]} : {3'b000, IMR[4], 2'b00, IMR[1:0]};
-	
-	always @ (posedge clk) begin
+	input wire RST,
+	input wire CS,
+	input wire A,
+	input wire WR,
+	input wire [7:0]din,
+	input wire slave,
+	output wire [7:0]dout,
+	output wire [7:0]ivect,
+	input wire clk,		// cpu CLK
+	output reg INT = 0,
+	input wire IACK,
+	input wire [6:0]I,	// 0:timer, 1:keyboard, 2:RTC, 3:mouse, 4: IDE0, 5: IDE1, 6: COM1
+	output reg dbg_slave,
+	output reg dbg_a,
+	output reg dbg_wr,
+	output reg [7:0] dbg_din
+);
+
+reg [6:0]ss_I = 0;
+reg [6:0]s_I = 0;
+reg [7:0]IMR_m = 8'hFF;
+reg [7:0]IMR_s = 8'hFF;
+reg [6:0]IRR = 0;
+reg [6:0]ISR = 0;
+reg      RIS; // Read ISR
+reg      AEOI;
+
+wire [6:0]IMR = {IMR_m[4],IMR_s[7:6],IMR_s[4],IMR_s[0],IMR_m[1:0]};
+
+assign dout = A ? (slave ? IMR_s : IMR_m) :
+            RIS ? (slave ? {ISR[5:4], 1'b0, ISR[3], 3'b000, ISR[2]} : {3'b000, ISR[6], 2'b00, ISR[1:0]}) :
+			      (slave ? {IRR[5:4], 1'b0, IRR[3], 3'b000, IRR[2]} : {3'b000, IRR[6], 2'b00, IRR[1:0]});
+
+wire [6:0] IRQ = IRR & ~IMR;
+
+assign ivect = IRQ[0] ? 8'h08 :
+               IRQ[1] ? 8'h09 :
+               IRQ[2] ? 8'h70 :
+               IRQ[3] ? 8'h74 :
+               IRQ[4] ? 8'h76 :
+               IRQ[5] ? 8'h77 :
+               IRQ[6] ? 8'h0c : 8'h00;
+
+always @ (posedge clk) begin
 	if (RST) begin
 		ss_I <= 0;
 		s_I <= 0;
-		IMR <= 5'b11111;
+		IMR_m <= 8'hFF;
+		IMR_s <= 8'hFF;
 		IRR <= 0;
+		ISR <= 0;
 		INT <= 0;
-	end else begin	
+		RIS <= 0;
+		AEOI <= 0;
+	end else begin
 		ss_I <= I;
 		s_I <= ss_I;
-		IRR <= (IRR | (~s_I & ss_I)) & ~IMR;	// front edge detection
+		IRR <= (IRR | (~s_I & ss_I));	// front edge detection
 		if(~INT) begin
-			if(IRR[0]) begin //timer
+			if(IRQ[0] && !ISR[0]) begin //timer
 				INT <= 1'b1; 
-				ivect <= 8'h08;
-				IRR[0] <= 1'b0;
-			end else if(IRR[1]) begin  // keyboard
+			end else if(IRQ[1] && ISR[1:0] == 0) begin  // keyboard
 				INT <= 1'b1; 
-				ivect <= 8'h09; 
-				IRR[1] <= 1'b0;
-			end else if(IRR[2]) begin  // RTC
+			end else if(IRQ[2] && ISR[2:0] == 0) begin  // RTC
 				INT <= 1'b1; 
-				ivect <= 8'h70; 
-				IRR[2] <= 1'b0;
-			end else if(IRR[3]) begin // mouse
+			end else if(IRQ[3] && ISR[3:0] == 0) begin // mouse
 				INT <= 1'b1; 
-				ivect <= 8'h74; 
-				IRR[3] <= 1'b0;
-			end else if(IRR[4]) begin // COM1
+			end else if(IRQ[4] && ISR[4:0] == 0) begin // IDE0
 				INT <= 1'b1;
-				ivect <= 8'h0c;
-				IRR[4] <= 1'b0;
+			end else if(IRQ[5] && ISR[5:0] == 0) begin // IDE1
+				INT <= 1'b1;
+			end else if(IRQ[6] && ISR[6:0] == 0) begin // COM1
+				INT <= 1'b1;
 			end
-		end else if(IACK) INT <= 1'b0;	// also act as Auto EOI
-		
-		if(CS & WR) 
-			if(slave) IMR[3:2] <= {din[4], din[0]};
-			else {IMR[4], IMR[1:0]} <= {din[4], din[1:0]};
+		end else if(IACK) begin
+			INT <= 1'b0;
+			if (IRQ[0]) begin
+				IRR[0] <= 0;
+				ISR[0] <= !AEOI;
+			end else if (IRQ[1]) begin
+				IRR[1] <= 0;
+				ISR[1] <= !AEOI;
+			end else if (IRQ[2]) begin
+				IRR[2] <= 0;
+				ISR[2] <= !AEOI;
+			end else if (IRQ[3]) begin
+				IRR[3] <= 0;
+				ISR[3] <= !AEOI;
+			end else if (IRQ[4]) begin
+				IRR[4] <= 0;
+				ISR[4] <= !AEOI;
+			end else if (IRQ[5]) begin
+				IRR[5] <= 0;
+				ISR[5] <= !AEOI;
+			end else if (IRQ[6]) begin
+				IRR[6] <= 0;
+				ISR[6] <= !AEOI;
+			end
+		end
+		if(CS) begin
+			dbg_a <= A;
+			dbg_wr <= WR;
+			dbg_slave <= slave;
+		end
+		if(CS & WR) begin
+			dbg_din <= din;
+			if (!A) begin
+				if (!din[4]) begin
+					// OCW
+					if (!din[3]) begin
+						// OCW2
+						if (din[5]) begin
+							// End-of-interrupt
+							if      (!slave && ISR[0]) ISR[0] <= 0;
+							else if (!slave && ISR[1]) ISR[1] <= 0;
+							else if ( slave && ISR[2]) ISR[2] <= 0;
+							else if ( slave && ISR[3]) ISR[3] <= 0;
+							else if ( slave && ISR[4]) ISR[4] <= 0;
+							else if ( slave && ISR[5]) ISR[5] <= 0;
+							else if (!slave && ISR[6]) ISR[6] <= 0;
+						end
+					end else begin
+						// OCW3
+						if (din[1]) RIS <= din[0];
+					end
+				end else begin
+					// ICW
+				end
+			end else begin
+				// OCW1
+				if(slave) IMR_s <= din; else IMR_m <= din;
+			end
+		end
 	end
-	end
-	
+end
 
 endmodule
 

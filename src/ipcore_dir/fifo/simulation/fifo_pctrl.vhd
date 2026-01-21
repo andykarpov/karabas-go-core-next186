@@ -173,6 +173,7 @@ BEGIN
  prc_re_i <= rd_en_i  WHEN sim_done_i   = '0' ELSE '0';
 
  SIM_DONE   <= sim_done_i;
+ rdw_gt_wrw <= (OTHERS => '1');
  wrw_gt_rdw <= (OTHERS => '1');
 
  PROCESS(RD_CLK)
@@ -273,17 +274,6 @@ END PROCESS;
     END IF;
   END PROCESS;
    
-
-   PROCESS(RD_CLK,RESET_RD) 
-   BEGIN
-     IF(RESET_RD = '1') THEN
-      rdw_gt_wrw <= (OTHERS => '1');
-     ELSIF (RD_CLK'event AND RD_CLK='1') THEN
-       IF(wr_en_rd2 = '1' AND rd_en_i= '0' AND EMPTY = '1') THEN
-         rdw_gt_wrw <= rdw_gt_wrw + '1';
-       END IF;
-     END IF;
-   END PROCESS;
  
  -- EMPTY deassert counter
   PROCESS(RD_CLK,RESET_RD) 
@@ -332,8 +322,8 @@ END PROCESS;
   END PROCESS;
 
   fifo_d_chk:IF(C_CH_TYPE /= 2) GENERATE
-    PRC_WR_EN  <= prc_we_i  AFTER 50 ns;
-    PRC_RD_EN  <= prc_re_i  AFTER 100 ns;
+    PRC_WR_EN  <= prc_we_i  AFTER 100 ns;
+    PRC_RD_EN  <= prc_re_i  AFTER 50 ns;
     data_chk_i <= dout_chk;
   END GENERATE fifo_d_chk;
   -----------------------------------------------------

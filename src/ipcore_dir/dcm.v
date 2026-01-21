@@ -55,11 +55,11 @@
 // "Output    Output      Phase     Duty      Pk-to-Pk        Phase"
 // "Clock    Freq (MHz) (degrees) Cycle (%) Jitter (ps)  Error (ps)"
 //----------------------------------------------------------------------------
-// CLK_OUT1____25.000______0.000______50.0______296.005____187.995
-// CLK_OUT2____80.000______0.000______50.0______228.899____187.995
-// CLK_OUT3____80.000____180.000______50.0______228.899____187.995
-// CLK_OUT4____11.268______0.000______50.0______345.998____187.995
-// CLK_OUT5____14.815______0.000______50.0______328.177____187.995
+// CLK_OUT1___100.000____-72.000______50.0______234.661____230.333
+// CLK_OUT2___100.000______0.000______50.0______234.661____230.333
+// CLK_OUT3____50.000______0.000______50.0______271.517____230.333
+// CLK_OUT4____50.000______0.000______50.0______271.517____230.333
+// CLK_OUT5____25.000______0.000______50.0______313.215____230.333
 //
 //----------------------------------------------------------------------------
 // "Input Clock   Freq (MHz)    Input Jitter (UI)"
@@ -68,7 +68,7 @@
 
 `timescale 1ps/1ps
 
-(* CORE_GENERATION_INFO = "dcm,clk_wiz_v3_6,{component_name=dcm,use_phase_alignment=true,use_min_o_jitter=false,use_max_i_jitter=false,use_dyn_phase_shift=false,use_inclk_switchover=false,use_dyn_reconfig=false,feedback_source=FDBK_AUTO,primtype_sel=PLL_BASE,num_out_clk=5,clkin1_period=20.000,clkin2_period=20.000,use_power_down=false,use_reset=false,use_locked=true,use_inclk_stopped=false,use_status=false,use_freeze=false,use_clk_valid=false,feedback_type=SINGLE,clock_mgr_type=AUTO,manual_override=false}" *)
+(* CORE_GENERATION_INFO = "dcm,clk_wiz_v3_6,{component_name=dcm,use_phase_alignment=true,use_min_o_jitter=false,use_max_i_jitter=false,use_dyn_phase_shift=false,use_inclk_switchover=false,use_dyn_reconfig=false,feedback_source=FDBK_AUTO,primtype_sel=PLL_BASE,num_out_clk=5,clkin1_period=20.000,clkin2_period=20.000,use_power_down=false,use_reset=false,use_locked=true,use_inclk_stopped=false,use_status=false,use_freeze=false,use_clk_valid=false,feedback_type=SINGLE,clock_mgr_type=MANUAL,manual_override=false}" *)
 module dcm
  (// Clock in ports
   input         CLK_IN1,
@@ -103,21 +103,21 @@ module dcm
     .CLK_FEEDBACK           ("CLKFBOUT"),
     .COMPENSATION           ("SYSTEM_SYNCHRONOUS"),
     .DIVCLK_DIVIDE          (1),
-    .CLKFBOUT_MULT          (16),
+    .CLKFBOUT_MULT          (10),
     .CLKFBOUT_PHASE         (0.000),
-    .CLKOUT0_DIVIDE         (32),
-    .CLKOUT0_PHASE          (0.000),
+    .CLKOUT0_DIVIDE         (5),
+    .CLKOUT0_PHASE          (-72.000),
     .CLKOUT0_DUTY_CYCLE     (0.500),
-    .CLKOUT1_DIVIDE         (10),
+    .CLKOUT1_DIVIDE         (5),
     .CLKOUT1_PHASE          (0.000),
     .CLKOUT1_DUTY_CYCLE     (0.500),
     .CLKOUT2_DIVIDE         (10),
-    .CLKOUT2_PHASE          (180.000),
+    .CLKOUT2_PHASE          (0.000),
     .CLKOUT2_DUTY_CYCLE     (0.500),
-    .CLKOUT3_DIVIDE         (71),
+    .CLKOUT3_DIVIDE         (10),
     .CLKOUT3_PHASE          (0.000),
     .CLKOUT3_DUTY_CYCLE     (0.500),
-    .CLKOUT4_DIVIDE         (54),
+    .CLKOUT4_DIVIDE         (20),
     .CLKOUT4_PHASE          (0.000),
     .CLKOUT4_DUTY_CYCLE     (0.500),
     .CLKIN_PERIOD           (20.000),

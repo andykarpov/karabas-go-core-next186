@@ -90,16 +90,14 @@ ARCHITECTURE fg_dg_arch OF fifo_dgen IS
  
   CONSTANT C_DATA_WIDTH : INTEGER := if_then_else(C_DIN_WIDTH > C_DOUT_WIDTH,C_DIN_WIDTH,C_DOUT_WIDTH);
   CONSTANT LOOP_COUNT   : INTEGER := divroundup(C_DATA_WIDTH,8);
-  CONSTANT D_WIDTH_DIFF : INTEGER := log2roundup(C_DOUT_WIDTH/C_DIN_WIDTH);
   
   SIGNAL pr_w_en        : STD_LOGIC := '0';
   SIGNAL rand_num       : STD_LOGIC_VECTOR(8*LOOP_COUNT-1 DOWNTO 0);
   SIGNAL wr_data_i      : STD_LOGIC_VECTOR(C_DIN_WIDTH-1 DOWNTO 0);
-  SIGNAL wr_d_sel       : STD_LOGIC_VECTOR(D_WIDTH_DIFF-1 DOWNTO 0) := (OTHERS => '0');
  BEGIN
   
    WR_EN   <= PRC_WR_EN ;
-   WR_DATA <= wr_data_i AFTER 50 ns;
+   WR_DATA <= wr_data_i AFTER 100 ns;
 
   ----------------------------------------------
   -- Generation of DATA
@@ -118,19 +116,8 @@ ARCHITECTURE fg_dg_arch OF fifo_dgen IS
             );
   END GENERATE; 
 
-     pr_w_en <= (AND_REDUCE(wr_d_sel)) AND PRC_WR_EN AND NOT FULL;
-     wr_data_i <=  rand_num(C_DOUT_WIDTH-C_DIN_WIDTH*conv_integer(wr_d_sel)-1 DOWNTO C_DOUT_WIDTH-C_DIN_WIDTH*(conv_integer(wr_d_sel)+1));
-          
-     PROCESS(WR_CLK,RESET)
-     BEGIN
-       IF(RESET = '1') THEN
-           wr_d_sel  <= (OTHERS => '0');
-       ELSIF(WR_CLK'event AND WR_CLK = '1') THEN
-         IF(FULL = '0' AND PRC_WR_EN = '1') THEN
-           wr_d_sel  <= wr_d_sel + "1";
-         END IF;
-       END IF;
-     END PROCESS;     
+     pr_w_en <= PRC_WR_EN AND NOT FULL;
+     wr_data_i <= rand_num(C_DIN_WIDTH-1 DOWNTO 0);
 
 
 END ARCHITECTURE;

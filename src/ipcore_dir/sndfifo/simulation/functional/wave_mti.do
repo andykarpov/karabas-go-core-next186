@@ -57,7 +57,6 @@
 
 onerror {resume}
 quietly WaveActivateNextPane {} 0
-add wave -noupdate /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/RST
 add wave -noupdate -divider WRITE
 add wave -noupdate /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/WR_CLK
 add wave -noupdate /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/WR_EN

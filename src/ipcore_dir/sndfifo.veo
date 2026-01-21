@@ -58,7 +58,6 @@
 
 //----------- Begin Cut here for INSTANTIATION Template ---// INST_TAG
 sndfifo your_instance_name (
-  .rst(rst), // input rst
   .wr_clk(wr_clk), // input wr_clk
   .rd_clk(rd_clk), // input rd_clk
   .din(din), // input [31 : 0] din
@@ -67,8 +66,8 @@ sndfifo your_instance_name (
   .dout(dout), // output [31 : 0] dout
   .full(full), // output full
   .empty(empty), // output empty
-  .prog_full(prog_full), // output prog_full
-  .prog_empty(prog_empty) // output prog_empty
+  .rd_data_count(rd_data_count), // output [11 : 0] rd_data_count
+  .wr_data_count(wr_data_count) // output [11 : 0] wr_data_count
 );
 // INST_TAG_END ------ End INSTANTIATION Template ---------
 

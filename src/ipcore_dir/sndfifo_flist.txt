@@ -49,6 +49,7 @@ sndfifo/simulation/timing/wave_ncsim.sv
 sndfifo.asy
 sndfifo.gise
 sndfifo.ngc
+sndfifo.sym
 sndfifo.v
 sndfifo.veo
 sndfifo.xco

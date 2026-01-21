@@ -46,7 +46,6 @@
 # PART OF THIS FILE AT ALL TIMES.
 #--------------------------------------------------------------------------------
 
-cp ../../../cache.mif .
 
 
 echo "Compiling Core Verilog UNISIM/Behavioral model"

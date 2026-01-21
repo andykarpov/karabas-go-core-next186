@@ -46,8 +46,8 @@ cache/simulation/timing/wave_mti.do
 cache/simulation/timing/wave_ncsim.sv
 cache.asy
 cache.gise
-cache.mif
 cache.ngc
+cache.sym
 cache.v
 cache.veo
 cache.xco

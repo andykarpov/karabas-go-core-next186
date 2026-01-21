@@ -64,7 +64,6 @@ gui_open_window Wave
 gui_sg_create sndfifo_Group
 gui_list_add_group -id Wave.1 {sndfifo_Group}
 
-gui_sg_addsignal -group sndfifo_Group /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/RST
 gui_sg_addsignal -group sndfifo_Group  WRITE -divider
 gui_sg_addsignal -group sndfifo_Group /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/WR_CLK
 gui_sg_addsignal -group sndfifo_Group /sndfifo_tb/sndfifo_synth_inst/sndfifo_inst/WR_EN
