@@ -1,6 +1,0 @@
-BIOS_Next186.asm(534) : Warning A4236: Text macro used prior to definition: KbdFlags3
-BIOS_Next186.asm(2687) : Warning A4236: Text macro used prior to definition: EquipmentWord
-BIOS_Next186.asm(2713) : Warning A4236: Text macro used prior to definition: HDSize
-BIOS_Next186.asm(3563) : Warning A4236: Text macro used prior to definition: HeadPtr
-BIOS_Next186.asm(3564) : Warning A4236: Text macro used prior to definition: TailPtr
-BIOS_Next186.asm(3565) : Warning A4236: Text macro used prior to definition: Buffer

@@ -1,7 +1,7 @@
 ##############################################################
 #
 # Xilinx Core Generator version 14.7
-# Date: Tue Jan 20 23:51:51 2026
+# Date: Wed Jan 21 20:29:55 2026
 #
 ##############################################################
 #
@@ -143,8 +143,8 @@ CSET input_depth_wach=16
 CSET input_depth_wdch=1024
 CSET input_depth_wrch=16
 CSET interface_type=Native
-CSET output_data_width=16
-CSET output_depth=1024
+CSET output_data_width=32
+CSET output_depth=512
 CSET overflow_flag=false
 CSET overflow_flag_axi=false
 CSET overflow_sense=Active_High
@@ -168,7 +168,7 @@ CSET rach_type=FIFO
 CSET rdch_type=FIFO
 CSET read_clock_frequency=1
 CSET read_data_count=false
-CSET read_data_count_width=10
+CSET read_data_count_width=9
 CSET register_slice_mode_axis=Fully_Registered
 CSET register_slice_mode_rach=Fully_Registered
 CSET register_slice_mode_rdch=Fully_Registered
@@ -210,4 +210,4 @@ CSET wuser_width=1
 MISC pkg_timestamp=2012-11-19T12:39:56Z
 # END Extra information
 GENERATE
-# CRC: ebd69e24
+# CRC: 6bb5f6fe

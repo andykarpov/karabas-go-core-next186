@@ -92,7 +92,7 @@ wire ps2_command_wr;
 wire [15:0] cdda_l;
 wire [15:0] cdda_r;
 wire [5:0] core_r, core_g, core_b;
-wire core_hs, core_vs, core_blank;
+wire core_hs, core_vs, core_blank, core_vb;
 wire [15:0] ide_dat_o, ide_dat_i;
 wire [3:0] ide_a;
 wire [1:0] ide_cs;
@@ -123,7 +123,7 @@ system sys_inst(
     .VGA_HSYNC(core_hs),
     .VGA_VSYNC(core_vs),
     .VGA_BLANK(core_blank),
-    .VGA_VBLANK(),
+    .VGA_VBLANK(core_vb),
     .frame_on(),
 
     .sdr_n_CS_WE_RAS_CAS({sdr_cs_n, sdr_we_n, sdr_ras_n, sdr_cas_n}),
@@ -408,7 +408,7 @@ end
 assign vga_rgb = {core_r, 2'b00, core_g, 2'b00, core_b, 2'b00};
 assign vga_hs = ~core_hs;
 assign vga_vs = ~core_vs;
-assign vga_blank = core_blank;
+assign vga_blank = core_blank || core_vb;
 
 endmodule
 

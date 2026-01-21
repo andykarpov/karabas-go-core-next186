@@ -64,7 +64,7 @@ fifo your_instance_name (
   .din(din), // input [15 : 0] din
   .wr_en(wr_en), // input wr_en
   .rd_en(rd_en), // input rd_en
-  .dout(dout), // output [15 : 0] dout
+  .dout(dout), // output [31 : 0] dout
   .full(full), // output full
   .empty(empty), // output empty
   .wr_data_count(wr_data_count) // output [8 : 0] wr_data_count

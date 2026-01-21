@@ -55,7 +55,7 @@ input rd_clk;
 input [15 : 0] din;
 input wr_en;
 input rd_en;
-output [15 : 0] dout;
+output [31 : 0] dout;
 output full;
 output empty;
 output [8 : 0] wr_data_count;
@@ -98,7 +98,7 @@ output [8 : 0] wr_data_count;
     .C_DIN_WIDTH_WDCH(64),
     .C_DIN_WIDTH_WRCH(2),
     .C_DOUT_RST_VAL("0"),
-    .C_DOUT_WIDTH(16),
+    .C_DOUT_WIDTH(32),
     .C_ENABLE_RLOCS(0),
     .C_ENABLE_RST_SYNC(1),
     .C_ERROR_INJECTION_TYPE(0),
@@ -203,10 +203,10 @@ output [8 : 0] wr_data_count;
     .C_PROG_FULL_TYPE_WDCH(0),
     .C_PROG_FULL_TYPE_WRCH(0),
     .C_RACH_TYPE(0),
-    .C_RD_DATA_COUNT_WIDTH(10),
-    .C_RD_DEPTH(1024),
+    .C_RD_DATA_COUNT_WIDTH(9),
+    .C_RD_DEPTH(512),
     .C_RD_FREQ(1),
-    .C_RD_PNTR_WIDTH(10),
+    .C_RD_PNTR_WIDTH(9),
     .C_RDCH_TYPE(0),
     .C_REG_SLICE_MODE_AXIS(0),
     .C_REG_SLICE_MODE_RACH(0),

@@ -536,10 +536,10 @@ module system (
 	assign PORT_IN[15:8] = 
 		({8{MEMORY_MAP}} & {7'b0000000, memmap[8]}) |
 		({8{INPUT_STATUS_OE}} & SDI) |
-		({8{CPU32_PORT}} & cpu32_data[15:8]); /*| 
+		({8{CPU32_PORT}} & cpu32_data[15:8]) | 
 		({8{JOYSTICK}} & GPIOState) |
 		({8{I2C_SELECT}} & i2cdout) |
-		({8{IDE_PORT0 | IDE_PORT1}} & IDE_DAT_I[15:8]);*/
+		({8{IDE_PORT0 | IDE_PORT1}} & IDE_DAT_I[15:8]);
 
 	assign PORT_IN[7:0] = //INPUT_STATUS_OE ? {2'b1x, cpu32_halt, sq_full, vblnk, s_RS232_HOST_RXD, s_RS232_DCE_RXD, hblnk | vblnk} : CPU32_PORT ? cpu32_data[7:0] : slowportdata;
 							 ({8{VGA_DAC_OE}} & VGA_DAC_DATA) |
@@ -553,14 +553,14 @@ module system (
 							 ({8{PIC_OE}} & PIC_DOUT) |
 							 ({8{VGA_SC}} & VGA_SC_DATA) |
 							 ({8{VGA_GC}} & VGA_GC_DATA) |
-						//	 ({8{JOYSTICK}} & GPIOData) |
+							 ({8{JOYSTICK}} & GPIOData) |
 							 ({8{PARALLEL_PORT_CTL}} & {1'bx, dss_full, 6'bxxxxxx}) |
 							 ({8{CPU32_PORT}} & cpu32_data[7:0]) | 
 							 ({8{COM1_PORT}} & COM1_DOUT) | 
 							 ({8{OPL2_PORT}} & opl32_data)  |
 							 ({8{MPU_PORT}} & mpu_data) |
-							 ({8{CGA_CL}} & CGA_CL_DATA);// |
-						//	 ({8{IDE_PORT0 | IDE_PORT1}} & IDE_DAT_I[7:0]);
+							 ({8{CGA_CL}} & CGA_CL_DATA) |
+							 ({8{IDE_PORT0 | IDE_PORT1}} & IDE_DAT_I[7:0]);
 
 
 	assign BIOS_REQ = sys_wr_data_valid;
@@ -620,7 +620,8 @@ module system (
 	  .din(sys_DOUT), // input [15 : 0] din
 	  .wr_en(!crw && sys_rd_data_valid && !col_counter[4]), // input wrreq
 	  .rd_en(vrden), // input rdreq
-	  .dout(fifo_dout32), // output [31 : 0] dout
+	  //.dout(fifo_dout32), // output [31 : 0] dout
+	  .dout({fifo_dout32[15:0], fifo_dout32[31:16]}), // output [31 : 0] dout
 	  .wr_data_count(fifo_wr_used_words) // output [8:0]
 	);
 
@@ -1008,7 +1009,7 @@ module system (
 		.sample()
 	);
 
-	/*i2c_master_byte i2cmb
+	i2c_master_byte i2cmb
 	(
 		.refclk(clk_25),	// 25Mhz=100Kbps...100Mhz=400Kbps
 		.din(i2c_cd[7:0]),
@@ -1019,7 +1020,7 @@ module system (
 		.SCL(I2C_SCL),
 		.SDA(I2C_SDA),
 		.rst(1'b0)
-	);*/
+	);
 
 	// adjust for CGA odd/even line addressing mode, add framebuffer start address in physical RAM
 	wire [17:0] vga_ddr_row_col_adr = modecomp[0] ? {5'b10111, modecomp[1] & linecnt[1], linecnt[0], cga_addr[12:2]} : {1'b1, vga_addr[16:13] + (vgatext[1] ? 4'b0111 : 4'b0100), vga_addr[12:0]};
