@@ -310,6 +310,21 @@ bios_loader bios_loader(
     .bios_loaded(bios_loaded)
 );
 
+// --------- OSD ------------
+
+overlay overlay(
+	.CLK(clk_vga),
+	.RGB_I({core_r, 2'b00, core_g, 2'b00, core_b, 2'b00}),
+	.RGB_O(vga_rgb),
+	.HSYNC_I(core_hs),
+	.VSYNC_I(core_vs),
+	.OSD_COMMAND(osd_command)
+);
+
+assign vga_hs = ~core_hs;
+assign vga_vs = ~core_vs;
+assign vga_blank = core_blank || core_vb;
+
 // ---------- misc -----------------------
 
 reg   [4:0] cpu_speed;
@@ -404,11 +419,6 @@ always @(posedge clk_cpu) begin
 		if (joy_cnt_ce) joy_cnt <= joy_cnt + 1'd1;
 	end else joy[3:0] <= 0;*/
 end
-
-assign vga_rgb = {core_r, 2'b00, core_g, 2'b00, core_b, 2'b00};
-assign vga_hs = ~core_hs;
-assign vga_vs = ~core_vs;
-assign vga_blank = core_blank || core_vb;
 
 endmodule
 
