@@ -1,7 +1,7 @@
 {
     "id": "next186",
     "name": "Next 186",
-    "build": "26012202",
+    "build": "26012212",
     "bitstream": "karabas_mini_top.bin",
     "visible": true,
     "type": "osd",

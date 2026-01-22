@@ -18,7 +18,7 @@ entity mcu is
     MCU_MOSI    : in std_logic;
     MCU_MISO    : out std_logic := 'Z';
     MCU_SCK     : in std_logic;
-	 MCU_SS 		 : in std_logic;
+	 MCU_SS 		 : in std_logic := '1';
 
 	 -- usb mouse
 	 MS_X 	 	: out std_logic_vector(7 downto 0) := "00000000";
@@ -35,44 +35,23 @@ entity mcu is
 	 KB_DAT3   : out std_logic_vector(7 downto 0) := "00000000";
 	 KB_DAT4   : out std_logic_vector(7 downto 0) := "00000000";
 	 KB_DAT5   : out std_logic_vector(7 downto 0) := "00000000";
-
+	 
 	 -- ps/2 scancode
 	 KB_SCANCODE : buffer std_logic_vector(7 downto 0) := "11111111";
 	 KB_SCANCODE_UPD : buffer std_logic := '0';
 
-	 -- xt scancode
+	 -- xt scancode (simplified)
 	 XT_SCANCODE : buffer std_logic_vector(7 downto 0) := "11111111";
 	 XT_SCANCODE_UPD : buffer std_logic := '0';
-	 
-	 -- ps/2 command
+
+	 -- ps2 control command (kbd)
 	 PS2_COMMAND : in std_logic_vector(15 downto 0);
 	 PS2_COMMAND_WR : in std_logic := '0';
-	 
+
 	 -- joysticks
 	 JOY_L			: out std_logic_vector(12 downto 0) := "000000000000";
 	 JOY_R			: out std_logic_vector(12 downto 0) := "000000000000";
 
-    -- rtc	 
-	 RTC_A 		: in std_logic_vector(7 downto 0);
-	 RTC_DI 		: in std_logic_vector(7 downto 0);
-	 RTC_DO 		: out std_logic_vector(7 downto 0);
-	 RTC_CS 		: in std_logic := '0';
-	 RTC_WR_N 	: in std_logic := '1';
-	 
-	 -- usb uart
-	 UART_RX_DATA			: out std_logic_vector(7 downto 0);
-	 UART_RX_IDX	: out std_logic_vector(7 downto 0) := (others => '0');
-	 
-	 UART_TX_DATA			: in std_logic_vector(7 downto 0);
-	 UART_TX_WR				: in std_logic := '0';
-	 UART_TX_MODE 			: in std_logic := '0'; -- 0 = zifi data @ 115200, 1 = evo rs232 data @ dll/dlm speed
-	 
-	 -- evo rs232 dlm/dll registers
-	 UART_DLM : in std_logic_vector(7 downto 0);
-	 UART_DLL : in std_logic_vector(7 downto 0);
-	 UART_DLM_WR : in std_logic;
-	 UART_DLL_WR : in std_logic;
-	 
 	 -- soft switches command
 	 SOFTSW_COMMAND : out std_logic_vector(15 downto 0);
 	 
@@ -82,16 +61,16 @@ entity mcu is
 	 ROMLOAD_DATA: out std_logic_vector(7 downto 0) := (others => '0');
 	 ROMLOAD_WR : out std_logic := '0';
 
+	 -- debug
+	 DEBUG_ADDR : in std_logic_vector(15 downto 0) := (others => '0');
+	 DEBUG_DATA : in std_logic_vector(15 downto 0) := (others => '0');	 
+
+	 -- hw setup
+	 HWID 		: out std_logic_vector(7 downto 0) := (others => '0');
+	 DVI_ONLY 	: out std_logic := '0';
+
     -- osd command
 	 OSD_COMMAND: out std_logic_vector(15 downto 0);
-	 
-	 -- hw setup
-	 HWID : out std_logic_vector(7 downto 0) := (others => '0');
-	 DVI_ONLY : out std_logic := '0';
-	 
-	 -- debug info
-	 DEBUG_ADDR : in std_logic_vector(15 downto 0) := (others => '0');
-	 DEBUG_DATA : in std_logic_vector(15 downto 0) := (others => '0');	 	 
 	 
 	 -- busy
 	 BUSY: buffer std_logic := '1'
@@ -109,14 +88,16 @@ architecture rtl of mcu is
 	constant CMD_ROMBANK    : std_logic_vector(7 downto 0) := x"06";
 	constant CMD_ROMDATA    : std_logic_vector(7 downto 0) := x"07";
 	constant CMD_ROMLOADER  : std_logic_vector(7 downto 0) := x"08";
-	constant CMD_PS2			: std_logic_vector(7 downto 0) := x"0B";
+	constant CMD_FT    		: std_logic_vector(7 downto 0) := x"09";
+	constant CMD_FT_DATA		: std_logic_vector(7 downto 0) := x"0A";
+	constant CMD_PS2_SCANCODE : std_logic_vector(7 downto 0) := x"0B";
 
 	-- 11, 12 - usb gamepad, joy : todo
 
 	constant CMD_OSD 			: std_logic_vector(7 downto 0) := x"20";
 	constant CMD_DEBUG_ADDR : std_logic_vector(7 downto 0) := x"30";
 	constant CMD_DEBUG_DATA : std_logic_vector(7 downto 0) := x"31";	
-	constant CMD_HW_SETUP	: std_logic_vector(7 downto 0) := x"F9";
+	constant CMD_HW_SETUP	: std_logic_vector(7 downto 0) := x"F9"; 
 	constant CMD_RTC 			: std_logic_vector(7 downto 0) := x"FA";
 	constant CMD_FLASHBOOT  : std_logic_vector(7 downto 0) := x"FB";
 	constant CMD_UART			: std_logic_vector(7 downto 0) := x"FC";
@@ -133,20 +114,6 @@ architecture rtl of mcu is
 	 signal prev_spi_di_req : std_logic := '0';
 	 signal spi_miso 		 	: std_logic;
 	 
-	 -- rtc 2-port ram signals
-	 signal rtcw_di 			: std_logic_vector(7 downto 0);
-	 signal rtcw_a 			: std_logic_vector(7 downto 0);
-	 signal rtcw_wr 			: std_logic := '0';
-	 signal rtcr_do 			: std_logic_vector(7 downto 0);
-
-	-- rtc data from mcu
-	 signal rtcr_a 			: std_logic_vector(7 downto 0);
-	 signal rtcr_d 			: std_logic_vector(7 downto 0);
-	 signal last_rtcr_a 		: std_logic_vector(7 downto 0);
-	 signal last_rtcr_d 		: std_logic_vector(7 downto 0);
-	 signal rtcr_command    : std_logic := '0';
-	 signal last_rtcr_command : std_logic := '0';
-	 
 	 -- romload addr
 	 signal tmp_romload_addr    : std_logic_vector(31 downto 0);
 	 signal prev_romload_addr   : std_logic_vector(31 downto 0) := x"FFFFFFFF";
@@ -162,13 +129,9 @@ architecture rtl of mcu is
 	
 	signal queue_data_count : std_logic_vector(8 downto 0) := (others => '0');
 	
-	--state machine for queue writes
-	type qmachine IS(idle, rtc_wr_req, rtc_wr_ack);
-	signal qstate : qmachine := idle;
-	
 	-- debug
 	signal prev_debug_addr  : std_logic_vector(15 downto 0) := (others => '0');
-	signal prev_debug_data  : std_logic_vector(15 downto 0) := (others => '0');	
+	signal prev_debug_data  : std_logic_vector(15 downto 0) := (others => '0');
 		 
 begin
 	
@@ -185,28 +148,20 @@ begin
 		  spi_sck_i      => MCU_SCK,
 		  spi_ssel_i     => MCU_SS,
 		  spi_mosi_i     => MCU_MOSI,
-		  spi_miso_o     => spi_miso,
+		  spi_miso_o     => MCU_MISO,
 
 		  di_req_o       => spi_di_req,
 		  di_i           => spi_di,
 		  wren_i         => '1',
 		  
 		  do_valid_o     => spi_do_valid,
-		  do_o           => spi_do,
-
-		  do_transfer_o  => open,
-		  wren_o         => open,
-		  wren_ack_o     => open,
-		  rx_bit_reg_o   => open,
-		  state_dbg_o    => open
+		  do_o           => spi_do
 	);
 
-	spi_di <= queue_do; -- when queue_rd_empty = '0' else x"FFFFFF";
---	queue_rd_req <= spi_di_req;
-	MCU_MISO	<= spi_miso when MCU_SS = '0' else 'Z';
+	spi_di <= queue_do; 
 	
 	-- pull queue data  
-	process (CLK, spi_di_req)
+	process (CLK)
 	begin 
 		if rising_edge(CLK) then 
 			queue_rd_req <= '0';
@@ -217,12 +172,12 @@ begin
 		end if;
 	end process;
 
-	process (CLK, spi_do_valid, spi_do)
+	process (CLK)
 	begin
 		if (rising_edge(CLK)) then
-			prev_spi_do_valid <= spi_do_valid;
 		
-			if spi_do_valid = '1' and prev_spi_do_valid = '0' then -- latch spi output on rising edge of spi_do_valid signal
+			prev_spi_do_valid <= spi_do_valid;
+			if spi_do_valid = '1' and prev_spi_do_valid = '0' then -- latch spi output on rising edge of spi_do_valid signal		
 				case spi_do(23 downto 16) is 
 					-- keyboard
 					when CMD_KBD => 
@@ -308,38 +263,17 @@ begin
 					when CMD_ROMLOADER =>
 						ROMLOADER_ACTIVE <= spi_do(0);
 							
-					-- rtc 
-					when CMD_RTC =>						
-						rtcr_a <= spi_do(15 downto 8);
-						rtcr_d <= spi_do(7 downto 0);
-						rtcr_command <= not rtcr_command;
-						
-					-- uart
-					when CMD_UART =>
-						UART_RX_DATA <= spi_do(7 downto 0);
-						UART_RX_IDX <= spi_do(15 downto 8);
-						
-					-- ps/2 / xt scancode from mcu
-					when CMD_PS2 => 
+					-- ps/2 scancode from mcu
+					when CMD_PS2_SCANCODE => 
 						case spi_do(15 downto 8) is
-							-- ps/2 scancode sequence
-							when x"00" => 
-								--if (spi_do(7 downto 0) /= KB_SCANCODE) then
-									KB_SCANCODE <= spi_do(7 downto 0); 
-									KB_SCANCODE_UPD <= not(KB_SCANCODE_UPD);
-								--end if;
-							-- xt scancode (1 byte without extended scancodes)
-							when x"01" => 
-								--if (spi_do(7 downto 0) /= XT_SCANCODE) then
-									XT_SCANCODE <= spi_do(7 downto 0); 
-									XT_SCANCODE_UPD <= not(XT_SCANCODE_UPD);
-								--end if;
+							when x"00" => KB_SCANCODE <= spi_do(7 downto 0); KB_SCANCODE_UPD <= not(KB_SCANCODE_UPD);
+							when x"01" => XT_SCANCODE <= spi_do(7 downto 0); XT_SCANCODE_UPD <= not(XT_SCANCODE_UPD);
 							when others => null;
 						end case;
-
+					
 					-- hw setup
 					when CMD_HW_SETUP => 
-						case spi_do(15 downto 8) is 
+						case spi_do(15 downto 8) is
 							when x"00" => HWID <= spi_do(7 downto 0);
 							when x"01" => DVI_ONLY <= spi_do(0);
 							when others => null;
@@ -361,7 +295,7 @@ begin
 	end process;
 	
 	-- romload wr signal
-	process (CLK, ROMLOAD_ADDR, prev_romload_addr, ROMLOADER_ACTIVE)
+	process (CLK)
 	begin
 		if rising_edge(CLK) then 
 			ROMLOAD_WR <= '0';
@@ -371,50 +305,6 @@ begin
 			end if;
 		end if;
 	end process;
-
-	--------------------------------------------------------------------------
-	-- mc146818a emulation	
-	-- http://web.stanford.edu/class/cs140/projects/pintos/specs/mc146818a.pdf
-	--------------------------------------------------------------------------
-	-- 
-	-- 000000 = 00 = Seconds       bin/bcd (0-59)
-	-- 000001 = 01 = Seconds Alarm bin/bcd (0-59)
-	-- 000010 = 02 = Minutes       bin/bcd (0-59)
-	-- 000011 = 03 = Minutes Alarm bin/bcd (0-59)
-	-- 000100 = 04 = Hours         bin/bcd (1-12 or 0-23)
-   -- 000101 = 05 = Hours Alarm   bin/bcd (1-12 or 0-23)
-   -- 000110 = 06 = Day of Week   bin/bcd (1-7, sunday = 1)
-   -- 000111 = 07 = Date of Month bin/bcd (1-31)
-   -- 001000 = 08 = Month         bin/bcd (1-12)
-	-- 001001 = 09 = Year          bin/bcd (0-99)
-	-- 001010 = 0A = Register A RW 7-UIP, 6-DV2, 5-DV1, 4-DV0, 3-RS3, 2-RS2, 1-RS1, 0-RS0. (uip = update in progress, dv-dividers, rs-rate selection)
-	-- 001011 = 0B = Register B RW 7-SET, 6-PIE, 5-AIE, 4-UIE, 3-SQWE, 2-DM, 1-24/12. 0-DSE (SET=update mode,PIE=int en,AIE=alarm int en,UIE=update int en, SQWE, DM 1=bcd, 0=bin, 24/12 1=24,0=12, DSE=daylight saving mode 1/0)
-	-- 001100 = 0C = Register C RO 7-IRFQ, 6-PF, 5-AF, 4-UF, 0000
-	-- 001101 = 0D = Register D RO 7-VRT, 0000000 (VRT = valid ram and time)
-	-- 001110 = 0E = Register E - memory, 50 bytes
-	-- ...
-	-- 011111 = 3F = Register 3F
-	
-	-- memory for rtc registers
-	URTC: entity work.dpram 
-	generic map(
-		DATAWIDTH => 8,
-		ADDRWIDTH => 8
-	)
-	port map (
-		clock	 => CLK,
-		data_a	 => rtcw_di,
-		address_a => rtcw_a,
-		wren_a 	 => rtcw_wr,
-		q_a => open,
-		
-		address_b => RTC_A,
-		data_b => "00000000",
-		wren_b => '0',
-		q_b	 => rtcr_do
-	);	
-	
-	RTC_DO <= rtcr_do;
 	
 	-- fifo for write commands to send them on mcu side 
 	UFIFO: entity work.fifo1
@@ -443,23 +333,7 @@ begin
 			queue_wr_req <= '0';
 			if PS2_COMMAND_WR = '1' then -- send PS/2 command to mcu (set kb typematic, mouse resolution, ...)
 				queue_wr_req <= '1';
-				queue_di <= CMD_PS2 & PS2_COMMAND;
-			elsif UART_TX_WR = '1' then -- send UART byte
-				queue_wr_req <= '1';
-				if (UART_TX_MODE = '1') then
-					queue_di <= CMD_UART & "00000011" & UART_TX_DATA;
-				else 
-					queue_di <= CMD_UART & "00000000" & UART_TX_DATA;
-				end if;
-			elsif UART_DLL_WR = '1' then -- send UART DLL reg
-				queue_wr_req <= '1';
-				queue_di <= CMD_UART & "00000001" & UART_DLL;
-			elsif UART_DLM_WR = '1' then -- send UART RLM reg
-				queue_wr_req <= '1';
-				queue_di <= CMD_UART & "00000010" & UART_DLM;
-			elsif RTC_WR_N = '0' AND RTC_CS = '1' and BUSY = '0' then -- add rtc register write to queue
-				queue_wr_req <= '1';
-				queue_di <= CMD_RTC & RTC_A & RTC_DI;
+				queue_di <= CMD_PS2_SCANCODE & PS2_COMMAND;
 			elsif DEBUG_ADDR /= prev_debug_addr then -- debug address
 				queue_wr_req <= '1';
 				queue_di <= CMD_DEBUG_ADDR & DEBUG_ADDR;
@@ -468,31 +342,11 @@ begin
 				queue_wr_req <= '1';
 				queue_di <= CMD_DEBUG_DATA & DEBUG_DATA;
 				prev_debug_data <= DEBUG_DATA;
-			elsif queue_rd_empty = '1' or queue_data_count < 5 then -- anti-empty queue
+			elsif queue_rd_empty = '1' then -- anti-empty queue
 				queue_wr_req <= '1';
 				queue_di <= CMD_NOPE & x"0000";
 			end if;
 						
-		end if;
-	end process;
-	
-	-- write RTC registers into ram from host / mcu
-	process (CLK) 
-	begin 
-		if rising_edge(CLK) then
-			rtcw_wr <= '0';
-			if RTC_WR_N = '0' AND RTC_CS = '1' and BUSY = '0' then
-				-- rtc mem write by host
-				rtcw_wr <= '1';
-				rtcw_a <= RTC_A;
-				rtcw_di <= RTC_DI;
-			elsif last_rtcr_command /= rtcr_command then
-				-- rtc mem write by mcu
-				rtcw_wr <= '1';
-				rtcw_a <= rtcr_a;
-				rtcw_di <= rtcr_d;
-				last_rtcr_command <= rtcr_command;
-			end if;
 		end if;
 	end process;
 

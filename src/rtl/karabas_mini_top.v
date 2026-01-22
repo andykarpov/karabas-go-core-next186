@@ -206,7 +206,7 @@ karabas_186 karabas_186(
 hdmi_top hdmi_top(
     .clk           (clk_vga),
     .ds80          (1'b1),
-    .reset         (areset),
+    .reset         (reset),
 
     .vga_rgb       (vga_rgb),
     .vga_hs        (vga_hs),

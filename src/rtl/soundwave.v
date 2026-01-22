@@ -66,8 +66,8 @@ module soundwave(
 		input wire [7:0]tandy_snd,
 		output wire full,	// when not full, write max 2x1152 16bit samples
 		output wire dss_full,
-		output wire [15:0] laudio,
-		output wire [15:0] raudio,
+		output reg [15:0] laudio,
+		output reg [15:0] raudio,
 		output reg AUDIO_L,
 		output reg AUDIO_R
 	);
@@ -83,18 +83,36 @@ module soundwave(
 	reg [15:0]r_opl3left = 0;
 	reg [15:0]r_opl3right = 0;
 
-	wire [16:0]lmix = {adc_l[23], adc_l[23:8]} + {cdda_l[15], cdda_l[15:0]} + {sample1[15], sample1[15:0]} + {r_opl3left[15], r_opl3left} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer left
-	wire [16:0]rmix = {adc_r[23], adc_r[23:8]} + {cdda_r[15], cdda_r[15:0]} + {sample1[31], sample1[31:16]} + {r_opl3right[15], r_opl3right} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer right
-	wire [15:0]lclamp = (~|lmix[16:15] | &lmix[16:15]) ? {!lmix[15], lmix[14:0]} : {16{!lmix[16]}}; // clamp to [-32768..32767] and add 32878
-	wire [15:0]rclamp = (~|rmix[16:15] | &rmix[16:15]) ? {!rmix[15], rmix[14:0]} : {16{!rmix[16]}};
-	wire lsign = lval[31:16] < lclamp;
-	wire rsign = rval[31:16] < rclamp;
+	wire signed [15:0] lmix = $signed(adc_l[23:8]) + $signed(cdda_l) + $signed(sample1[15:0]) + $signed(r_opl3left) + $signed({tandy_snd, 6'd0}) + $signed(speaker << `SPKVOL); // signed mixer left
+	wire signed [15:0] rmix = $signed(adc_r[23:8]) + $signed(cdda_r) + $signed(sample1[31:16]) + $signed(r_opl3right) + $signed({tandy_snd, 6'd0}) + $signed(speaker << `SPKVOL); // signed mixer right
+
+	always @(posedge CLK)
+	begin
+		r_opl3left <= opl3left;
+		r_opl3right <= opl3right;
+		laudio <= lmix;
+		raudio <= rmix;
+	end
+	
+	// pwm dac
+	dac dac_l(
+		.I_CLK			(CLK),
+		.I_RESET			(1'b0),
+		.I_DATA			(laudio),
+		.O_DAC			(AUDIO_L)
+	);
+
+	dac dac_r(
+		.I_CLK			(CLK),
+		.I_RESET			(1'b0),
+		.I_DATA			(raudio),
+		.O_DAC			(AUDIO_R)
+	);	
+
 	wire [11:0]wrusedw;
 	wire [11:0]rdusedw;
 	assign full = wrusedw >= 12'd2940;
 	assign dss_full = rdusedw > 12'd90;	// Disney sound source queue full
-	assign laudio = lclamp;
-	assign raudio = rclamp;
 
 	sndfifo sndfifo_inst 
 	(
@@ -108,18 +126,6 @@ module soundwave(
 		.rd_data_count(rdusedw),
 		.empty(qempty) // output empty
 	);
-
-
-	always @(posedge CLK) begin
-		r_opl3left <= opl3left;
-		r_opl3right <= opl3right;
-
-		lval <= lval - lval[31:7] + (lsign << 25);
-		AUDIO_L <= lsign;
-
-		rval <= rval - rval[31:7] + (rsign << 25);
-		AUDIO_R <= rsign;
-	end
 
 	always @(posedge CLK) begin
 		if(we) 

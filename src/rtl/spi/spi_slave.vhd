@@ -119,7 +119,7 @@ use IEEE.STD_LOGIC_UNSIGNED.ALL;
  
 entity spi_slave is
     Generic (   
-        N : positive := 32;                                             -- 32bit serial word length is default
+        N : positive := 24;                                             -- 32bit serial word length is default
         CPOL : std_logic := '0';                                        -- SPI mode selection (mode 0 default)
         CPHA : std_logic := '0';                                        -- CPOL = clock polarity, CPHA = clock phase.
         PREFETCH : positive := 2);                                      -- prefetch lookahead cycles

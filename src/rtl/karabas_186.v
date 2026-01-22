@@ -241,17 +241,6 @@ mcu mcu(
     .JOY_L(joy_l),
     .JOY_R(joy_r),
     
-    .RTC_A(8'b00000000),
-    .RTC_DI(8'b00000000),
-    .RTC_DO(),
-    .RTC_CS(1'b0),
-    .RTC_WR_N(1'b1),
-    
-    .UART_RX_DATA(),
-    .UART_RX_IDX(),
-    .UART_TX_DATA(8'b00000000),
-    .UART_TX_WR(1'b0),
-    
     .ROMLOADER_ACTIVE(romload_active),
     .ROMLOAD_ADDR(romload_a),
     .ROMLOAD_DATA(romload_d),
@@ -262,6 +251,9 @@ mcu mcu(
     
     .SOFTSW_COMMAND(softsw_command),    
     .OSD_COMMAND(osd_command),
+	 
+	 .DEBUG_ADDR(16'h0000),
+	 .DEBUG_DATA(16'h0000),
     
     .BUSY(mcu_busy)
 );
