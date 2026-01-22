@@ -78,7 +78,7 @@ architecture rtl of overlay is
 	 
 	 signal flash_cnt : std_logic_vector(7 downto 0);
 	 
-	 constant h_offset : natural := 88; -- 120
+	 constant h_offset : natural := 104; -- 120
 	 constant v_offset : natural := 32; -- 72	
 begin
 

@@ -24,7 +24,6 @@
 -- @author Andy Karpov <andy.karpov@gmail.com>
 -- EU, 2026
 --
--- TODO: OSD
 -- TODO: mouse wheel
 -- TODO: HDD (CF) вместо SD
 -- TODO: UART - connect to USB uart or ESP8266
