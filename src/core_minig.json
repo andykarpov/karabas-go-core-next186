@@ -6,6 +6,7 @@
     "visible": true,
     "type": "osd",
     "order": 6,
+    "spi_freq": 8,
     "eeprom_bank": 255,
     "roms": [
         {"filename": "186Code/BIOS/BIOS_Next186.com", "address": 0}
