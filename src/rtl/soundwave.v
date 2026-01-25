@@ -48,7 +48,7 @@
 // word write: LEFT first, the queue is updated only after RIGHT value is written
 // sample rate: 44100Hz
 //////////////////////////////////////////////////////////////////////////////////
-`define SPKVOL	11
+`define SPKVOL	14
 
 module soundwave(
 		input wire CLK,
@@ -83,8 +83,8 @@ module soundwave(
 	reg [15:0]r_opl3left = 0;
 	reg [15:0]r_opl3right = 0;
 
-	wire signed [15:0] lmix = $signed(adc_l[23:8]) + $signed(cdda_l) + $signed(sample1[15:0]) + $signed(r_opl3left) + $signed({tandy_snd, 8'd0}) + $signed(speaker << `SPKVOL); // signed mixer left
-	wire signed [15:0] rmix = $signed(adc_r[23:8]) + $signed(cdda_r) + $signed(sample1[31:16]) + $signed(r_opl3right) + $signed({tandy_snd, 8'd0}) + $signed(speaker << `SPKVOL); // signed mixer right
+	wire signed [15:0] lmix = $signed(adc_l[23:8]) + $signed(cdda_l) + $signed(sample1[15:0]) + $signed(r_opl3left) + $signed({tandy_snd, 6'd0}) + $signed(speaker << `SPKVOL); // signed mixer left
+	wire signed [15:0] rmix = $signed(adc_r[23:8]) + $signed(cdda_r) + $signed(sample1[31:16]) + $signed(r_opl3right) + $signed({tandy_snd, 6'd0}) + $signed(speaker << `SPKVOL); // signed mixer right
 
 	always @(posedge CLK)
 	begin
