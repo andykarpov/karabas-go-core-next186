@@ -16,7 +16,7 @@ entity mcu is
 
 	 -- spi
     MCU_MOSI    : in std_logic;
-    MCU_MISO    : out std_logic := 'Z';
+    MCU_MISO    : out std_logic := '1';
     MCU_SCK     : in std_logic;
 	 MCU_SS 		 : in std_logic := '1';
 
