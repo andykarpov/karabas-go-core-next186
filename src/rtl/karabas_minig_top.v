@@ -161,7 +161,7 @@ wire areset, reset;
 wire [15:0] audio_mix_l, audio_mix_r;
 wire [23:0] adc_l, adc_r;
 wire [23:0] vga_rgb;
-wire vga_hs, vga_vs, vga_blank, dvi_only;
+wire vga_hs, vga_vs, vga_blank, vga_reset, dvi_only;
 
 karabas_186 karabas_186(
     .clk           (CLK_50MHZ),
@@ -191,6 +191,7 @@ karabas_186 karabas_186(
     .vga_hs        (vga_hs),
     .vga_vs        (vga_vs),
     .vga_blank     (vga_blank),
+    .vga_reset     (vga_reset),
     .dvi_only      (dvi_only),
     .sd_cs_n       (SD_CS_N),
     .sd_di         (SD_DI),
@@ -203,10 +204,9 @@ karabas_186 karabas_186(
 );
 
 // hdmi 
-hdmi_top hdmi_top(
+zhdmi_top zhdmi_top(
     .clk           (clk_vga),
-    .ds80          (1'b1),
-    .reset         (reset),
+    .reset         (reset || vga_reset),
 
     .vga_rgb       (vga_rgb),
     .vga_hs        (vga_hs),
