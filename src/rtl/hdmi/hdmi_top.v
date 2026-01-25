@@ -105,6 +105,7 @@ dvi dvi(
 );
 
 hdmi_out_xilinx hdmiio(
+   .reset_i(pll_reset),
 	.clock_pixel_i(p_clk_int),
 	.clock_tdms_i(clk_hdmi),
 	.clock_tdms_n_i(clk_hdmi_n),

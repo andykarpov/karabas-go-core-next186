@@ -38,6 +38,7 @@ use unisim.vcomponents.all;
 
 entity hdmi_out_xilinx is
    port (
+		reset_i				: in std_logic := '0';
       clock_pixel_i     : in std_logic;   -- x1
       clock_tdms_i      : in std_logic;   -- x5
       clock_tdms_n_i    : in std_logic;
@@ -103,7 +104,7 @@ begin
          C0  => clock_tdms_i,
          C1  => clock_tdms_n_i,
          CE  => '1',
-         R   => '0',
+         R   => reset_i,
          S   => '0',
          D0  => output_bits(i)(0),
          D1  => output_bits(i)(1),

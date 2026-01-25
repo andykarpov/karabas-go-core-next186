@@ -235,8 +235,8 @@ NET "karabas_186/clk_dsp" TNM_NET = "clk_dsp";
 NET "karabas_186/CLK14745600" TNM_NET = "clk_14";
 NET "karabas_186/clk_3" TNM_NET = "clk_3";
 NET "MCU_SCK" TNM_NET = "clk_mcu";
-NET "hdmi_top/clk_hdmi" TNM_NET = "CLK_HDMI";
-NET "hdmi_top/clk_hdmi_n" TNM_NET = "CLK_HDMI_n";
+NET "zhdmi_top/clk_hdmi" TNM_NET = "CLK_HDMI";
+NET "zhdmi_top/clk_hdmi_n" TNM_NET = "CLK_HDMI_n";
 
 TIMESPEC "TS_CLK_SDR" = PERIOD "clk_sdr" 100 MHz;
 TIMESPEC "TS_CLK_SDR_OUT" = PERIOD "clk_sdr_out" 100 MHz; // PHASE + 2.5 ns

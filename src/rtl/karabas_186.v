@@ -33,6 +33,7 @@ module karabas_186(
     output wire         vga_hs,
     output wire         vga_vs,
     output wire         vga_blank,
+    output wire         vga_reset,
     output wire         dvi_only,
 
     output wire         sd_cs_n,
@@ -92,7 +93,7 @@ wire ps2_command_wr;
 wire [15:0] cdda_l;
 wire [15:0] cdda_r;
 wire [5:0] core_r, core_g, core_b;
-wire core_hs, core_vs, core_blank, core_vb;
+wire core_hs, core_vs, core_blank, core_vga_reset, core_vb;
 wire [15:0] ide_dat_o, ide_dat_i;
 wire [3:0] ide_a;
 wire [1:0] ide_cs;
@@ -124,6 +125,7 @@ system sys_inst(
     .VGA_VSYNC(core_vs),
     .VGA_BLANK(core_blank),
     .VGA_VBLANK(core_vb),
+	 .VGA_RESET(core_vga_reset),
     .frame_on(),
 
     .sdr_n_CS_WE_RAS_CAS({sdr_cs_n, sdr_we_n, sdr_ras_n, sdr_cas_n}),
@@ -316,6 +318,7 @@ overlay overlay(
 assign vga_hs = ~core_hs;
 assign vga_vs = ~core_vs;
 assign vga_blank = core_blank || core_vb;
+assign vga_reset = core_vga_reset;
 
 // ---------- misc -----------------------
 

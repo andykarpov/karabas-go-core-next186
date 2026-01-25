@@ -180,6 +180,7 @@ module system (
 	output wire VGA_VSYNC,
 	output reg VGA_BLANK,
 	output wire VGA_VBLANK,
+	output wire VGA_RESET,
 	input wire BTN_RESET,	// Reset
 	input wire BTN_NMI,		// NMI
 	output wire [7:0]LED,	// HALT
@@ -355,7 +356,8 @@ module system (
 	reg [1:0]vgatext = 0;     // 1 for text mode
 	reg [1:0]modecomp = 0;    // CGA/Tandy compatibility line addressing mode
 	wire shiftload;           // 1 for 4-bit packed pixel mode (for CGA 320x200x4)
-	reg [1:0]planar = 0;
+	wire [31:0] vmode = {vde, hde, vga13, vgatext, modecomp, shiftload}; // video mode
+ 	reg [1:0]planar = 0;
 	reg [1:0]half = 0;        // half pixel clock
 	reg [3:0]replncnt;
 	wire vgaflashreq;
@@ -685,6 +687,18 @@ module system (
 	);
 	assign VGA_VBLANK = vblnk;
 
+	// reset on vmode change
+	reg [31:0] prev_vmode;
+	reg [5:0] vmode_reset;
+	always @(posedge clk_cpu) begin
+		prev_vmode <= vmode;
+		if (vmode != prev_vmode) begin
+			vmode_reset <= 6'b111111;
+		end
+		vmode_reset <= {vmode_reset[4:0], 0};
+	end	
+	assign VGA_RESET = vmode_reset[5];
+	
 	VGA_SC sc
 	(
 		.CE(IORQ && CPU_CE && VGA_SC),	// 3c4, 3c5

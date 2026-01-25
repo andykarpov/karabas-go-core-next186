@@ -48,7 +48,7 @@
 // word write: LEFT first, the queue is updated only after RIGHT value is written
 // sample rate: 44100Hz
 //////////////////////////////////////////////////////////////////////////////////
-`define SPKVOL	14
+`define SPKVOL	11
 
 module soundwave(
 		input wire CLK,
@@ -66,8 +66,8 @@ module soundwave(
 		input wire [7:0]tandy_snd,
 		output wire full,	// when not full, write max 2x1152 16bit samples
 		output wire dss_full,
-		output reg [15:0] laudio,
-		output reg [15:0] raudio,
+		output wire [15:0] laudio,
+		output wire [15:0] raudio,
 		output reg AUDIO_L,
 		output reg AUDIO_R
 	);
@@ -82,32 +82,34 @@ module soundwave(
 	reg [31:0]rval = 0;
 	reg [15:0]r_opl3left = 0;
 	reg [15:0]r_opl3right = 0;
+	reg [15:0]r_adc_l = 0;
+	reg [15:0]r_adc_r = 0;
+	reg [15:0]r_cdda_l = 0;
+	reg [15:0]r_cdda_r = 0;
 
-	wire signed [15:0] lmix = $signed(adc_l[23:8]) + $signed(cdda_l) + $signed(sample1[15:0]) + $signed(r_opl3left) + $signed({tandy_snd, 6'd0}) + $signed(speaker << `SPKVOL); // signed mixer left
-	wire signed [15:0] rmix = $signed(adc_r[23:8]) + $signed(cdda_r) + $signed(sample1[31:16]) + $signed(r_opl3right) + $signed({tandy_snd, 6'd0}) + $signed(speaker << `SPKVOL); // signed mixer right
+	wire [16:0]lmix = {r_cdda_l[15], r_cdda_l[15:0]} + {r_adc_l[15], r_adc_l[15:0]} + {sample1[15], sample1[15:0]} + {r_opl3left[15], r_opl3left} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer left
+	wire [16:0]rmix = {r_cdda_r[15], r_cdda_r[15:0]} + {r_adc_r[15], r_adc_r[15:0]} + {sample1[31], sample1[31:16]} + {r_opl3right[15], r_opl3right} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer right
+	wire [15:0]lclamp = (~|lmix[16:15] | &lmix[16:15]) ? {!lmix[15], lmix[14:0]} : {16{!lmix[16]}}; // clamp to [-32768..32767] and add 32878
+	wire [15:0]rclamp = (~|rmix[16:15] | &rmix[16:15]) ? {!rmix[15], rmix[14:0]} : {16{!rmix[16]}};
+	wire lsign = lval[31:16] < lclamp;
+	wire rsign = rval[31:16] < rclamp;
+	assign laudio = lclamp;
+	assign raudio = rclamp;
 
-	always @(posedge CLK)
-	begin
+	always @(posedge CLK) begin
 		r_opl3left <= opl3left;
 		r_opl3right <= opl3right;
-		laudio <= lmix;
-		raudio <= rmix;
-	end
-	
-	// pwm dac
-	dac dac_l(
-		.I_CLK			(CLK),
-		.I_RESET			(1'b0),
-		.I_DATA			(laudio),
-		.O_DAC			(AUDIO_L)
-	);
+		r_adc_l <= adc_l[23:8];
+		r_adc_r <= adc_r[23:8];
+		r_cdda_l <= cdda_l;
+		r_cdda_r <= cdda_r;
 
-	dac dac_r(
-		.I_CLK			(CLK),
-		.I_RESET			(1'b0),
-		.I_DATA			(raudio),
-		.O_DAC			(AUDIO_R)
-	);	
+		lval <= lval - lval[31:7] + (lsign << 25);
+		AUDIO_L <= lsign;
+
+		rval <= rval - rval[31:7] + (rsign << 25);
+		AUDIO_R <= rsign;
+	end
 
 	wire [11:0]wrusedw;
 	wire [11:0]rdusedw;
