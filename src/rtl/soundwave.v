@@ -82,13 +82,9 @@ module soundwave(
 	reg [31:0]rval = 0;
 	reg [15:0]r_opl3left = 0;
 	reg [15:0]r_opl3right = 0;
-	reg [15:0]r_adc_l = 0;
-	reg [15:0]r_adc_r = 0;
-	reg [15:0]r_cdda_l = 0;
-	reg [15:0]r_cdda_r = 0;
 
-	wire [16:0]lmix = {r_cdda_l[15], r_cdda_l[15:0]} + {r_adc_l[15], r_adc_l[15:0]} + {sample1[15], sample1[15:0]} + {r_opl3left[15], r_opl3left} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer left
-	wire [16:0]rmix = {r_cdda_r[15], r_cdda_r[15:0]} + {r_adc_r[15], r_adc_r[15:0]} + {sample1[31], sample1[31:16]} + {r_opl3right[15], r_opl3right} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer right
+	wire [16:0]lmix = {cdda_l[15], cdda_l[15:0]} + {adc_l[23], adc_l[23:8]} + {sample1[15], sample1[15:0]} + {r_opl3left[15], r_opl3left} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer left
+	wire [16:0]rmix = {cdda_r[15], cdda_r[15:0]} + {adc_r[23], adc_r[23:8]} + {sample1[31], sample1[31:16]} + {r_opl3right[15], r_opl3right} + {tandy_snd, 6'd0} + (speaker << `SPKVOL); // signed mixer right
 	wire [15:0]lclamp = (~|lmix[16:15] | &lmix[16:15]) ? {!lmix[15], lmix[14:0]} : {16{!lmix[16]}}; // clamp to [-32768..32767] and add 32878
 	wire [15:0]rclamp = (~|rmix[16:15] | &rmix[16:15]) ? {!rmix[15], rmix[14:0]} : {16{!rmix[16]}};
 	wire lsign = lval[31:16] < lclamp;
@@ -99,10 +95,6 @@ module soundwave(
 	always @(posedge CLK) begin
 		r_opl3left <= opl3left;
 		r_opl3right <= opl3right;
-		r_adc_l <= adc_l[23:8];
-		r_adc_r <= adc_r[23:8];
-		r_cdda_l <= cdda_l;
-		r_cdda_r <= cdda_r;
 
 		lval <= lval - lval[31:7] + (lsign << 25);
 		AUDIO_L <= lsign;
