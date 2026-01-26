@@ -175,7 +175,7 @@ wire areset, reset;
 wire [15:0] audio_mix_l, audio_mix_r;
 wire [23:0] adc_l, adc_r;
 wire [23:0] vga_rgb;
-wire vga_hs, vga_vs, vga_blank, dvi_only;
+wire vga_hs, vga_vs, vga_blank, vga_reset, dvi_only;
 
 assign VGA_R = vga_rgb[23:16];
 assign VGA_G = vga_rgb[15:8];
@@ -211,6 +211,7 @@ karabas_186 karabas_186(
     .vga_hs        (vga_hs),
     .vga_vs        (vga_vs),
     .vga_blank     (vga_blank),
+    .vga_reset     (vga_reset),
     .dvi_only      (dvi_only),
     .sd_cs_n       (SD_CS_N),
     .sd_di         (SD_DI),
