@@ -1,7 +1,9 @@
 `timescale 1ns / 1ns
 `default_nettype none
 
-module karabas_186(
+module karabas_186 #(
+    parameter BURST_MAX_MHZ = 0 // see mcu.vhd
+)(
     input  wire         clk,
 
     output wire         clk_bus,
@@ -44,7 +46,9 @@ module karabas_186(
     input  wire         mcu_cs_n,
     input  wire         mcu_sck,
     input  wire         mcu_mosi,
-    output wire         mcu_miso
+    output wire         mcu_miso,
+    input  wire         mcu_burst_cs_n,  // burst transfers (karabas-go-firmware docs/burst_protocol.md)
+    output wire         mcu_burst_ready
 );
 
 wire clk_buf;
@@ -218,7 +222,7 @@ wire [31:0] romload_a;
 wire [7:0] romload_d;
 wire romload_active, romload_wr;
 
-mcu mcu(
+mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
     .CLK(clk_bus),
     .N_RESET(~areset),
     
@@ -226,6 +230,8 @@ mcu mcu(
     .MCU_MISO(mcu_miso),
     .MCU_SCK(mcu_sck),
     .MCU_SS(mcu_cs_n),
+    .MCU_BURST_CS_N(mcu_burst_cs_n),
+    .MCU_BURST_READY(mcu_burst_ready),
     
     .MS_X(ms_x),
     .MS_Y(ms_y),
