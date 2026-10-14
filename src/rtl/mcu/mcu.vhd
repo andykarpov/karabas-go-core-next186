@@ -9,6 +9,11 @@ use IEEE.numeric_std.all;
 use IEEE.std_logic_unsigned.all;
 
 entity mcu is
+	generic (
+		-- highest burst SCK announced to the mcu in the CMD_CAPS answer, MHz (0 = normal link
+		-- clock, the core's spi_freq). Raise it only on boards where bursts were verified at that clock.
+		BURST_MAX_MHZ : integer := 0
+	);
 	port
 	(
 	 CLK			 : in std_logic;
@@ -19,6 +24,10 @@ entity mcu is
     MCU_MISO    : out std_logic := '1';
     MCU_SCK     : in std_logic;
 	 MCU_SS 		 : in std_logic := '1';
+
+	 -- burst transfers (karabas-go-firmware docs/burst_protocol.md)
+	 MCU_BURST_CS_N  : in std_logic := '1';
+	 MCU_BURST_READY : out std_logic := '1';
 
 	 -- usb mouse
 	 MS_X 	 	: out std_logic_vector(7 downto 0) := "00000000";
@@ -49,8 +58,8 @@ entity mcu is
 	 PS2_COMMAND_WR : in std_logic := '0';
 
 	 -- joysticks
-	 JOY_L			: out std_logic_vector(12 downto 0) := "000000000000";
-	 JOY_R			: out std_logic_vector(12 downto 0) := "000000000000";
+	 JOY_L			: out std_logic_vector(12 downto 0) := (others => '0');
+	 JOY_R			: out std_logic_vector(12 downto 0) := (others => '0');
 
 	 -- soft switches command
 	 SOFTSW_COMMAND : out std_logic_vector(15 downto 0);
@@ -97,6 +106,7 @@ architecture rtl of mcu is
 	constant CMD_OSD 			: std_logic_vector(7 downto 0) := x"20";
 	constant CMD_DEBUG_ADDR : std_logic_vector(7 downto 0) := x"30";
 	constant CMD_DEBUG_DATA : std_logic_vector(7 downto 0) := x"31";	
+	constant CMD_CAPS		: std_logic_vector(7 downto 0) := x"F7";
 	constant CMD_HW_SETUP	: std_logic_vector(7 downto 0) := x"F9"; 
 	constant CMD_RTC 			: std_logic_vector(7 downto 0) := x"FA";
 	constant CMD_FLASHBOOT  : std_logic_vector(7 downto 0) := x"FB";
@@ -132,6 +142,19 @@ architecture rtl of mcu is
 	-- debug
 	signal prev_debug_addr  : std_logic_vector(15 downto 0) := (others => '0');
 	signal prev_debug_data  : std_logic_vector(15 downto 0) := (others => '0');
+
+	-- capabilities answered to the CMD_CAPS query:
+	-- bit 0 = burst write, bit 1 = MCU_BURST_READY is driven; max burst SCK from BURST_MAX_MHZ
+	constant CAPS           : std_logic_vector(7 downto 0) := x"03";
+	constant CAPS_MAX_MHZ   : std_logic_vector(7 downto 0) := std_logic_vector(to_unsigned(BURST_MAX_MHZ, 8));
+	signal caps_req         : std_logic := '0';
+	signal caps_ack         : std_logic := '0';
+
+	-- burst receiver
+	signal burst_type       : std_logic_vector(7 downto 0);
+	signal burst_addr       : std_logic_vector(31 downto 0);
+	signal burst_data       : std_logic_vector(7 downto 0);
+	signal burst_wr         : std_logic;
 		 
 begin
 	
@@ -159,6 +182,31 @@ begin
 	);
 
 	spi_di <= queue_do; 
+
+	--------------------------------------------------------------------------
+	-- MCU burst transfers (second chip select, see docs/burst_protocol.md)
+	--------------------------------------------------------------------------
+
+	U_BURST: entity work.burst_rx
+	port map(
+		CLK      => CLK,
+		SCK      => MCU_SCK,
+		MOSI     => MCU_MOSI,
+		CS_N     => MCU_BURST_CS_N,
+		TYPE_O   => burst_type,
+		ADDR_O   => burst_addr,
+		DATA_O   => burst_data,
+		WR_O     => burst_wr,
+		ACTIVE_O => open
+	);
+
+	-- a burst byte arrives every 250 ns at most (32 MHz SCK). bios_loader collects the bytes in a
+	-- 2 x 64 byte buffer and ddr_186 writes a full half to SDRAM with top priority (one 32-word
+	-- SDRAM write at 100 MHz, under 1 us even behind a VGA read), while the next half takes
+	-- 16 us to arrive. The ROMLOAD_WR strobe (one 50 MHz clock) is sampled twice at clk_sdr.
+	-- So a whole burst can always be accepted. A core with a slower consumer puts a fifo here
+	-- and drops READY while it has less than 512 bytes free.
+	MCU_BURST_READY <= '1';
 	
 	-- pull queue data  
 	process (CLK)
@@ -285,11 +333,26 @@ begin
 					-- init done
 					when CMD_INIT_DONE => BUSY <= '0';
 
+					-- capability query: answer through the queue to the mcu
+					when CMD_CAPS =>
+						if spi_do(15 downto 8) = x"00" then
+							caps_req <= not caps_req;
+						end if;
+
 					-- nope
 					when CMD_NOPE => null;
 					
 					when others => null;
 				end case;
+			end if;
+
+			-- burst data: the same loader signals as the classic bank + data commands
+			-- (the write strobe follows the address change below)
+			if burst_wr = '1' then
+				if burst_type = CMD_ROMDATA then
+					ROMLOAD_ADDR <= burst_addr;
+					ROMLOAD_DATA <= burst_data;
+				end if;
 			end if;
 		end if;
 	end process;
@@ -331,7 +394,11 @@ begin
 	begin
 		if rising_edge(CLK) then
 			queue_wr_req <= '0';
-			if PS2_COMMAND_WR = '1' then -- send PS/2 command to mcu (set kb typematic, mouse resolution, ...)
+			if caps_req /= caps_ack then -- answer the capability query
+				queue_wr_req <= '1';
+				queue_di <= CMD_CAPS & CAPS & CAPS_MAX_MHZ;
+				caps_ack <= caps_req;
+			elsif PS2_COMMAND_WR = '1' then -- send PS/2 command to mcu (set kb typematic, mouse resolution, ...)
 				queue_wr_req <= '1';
 				queue_di <= CMD_PS2_SCANCODE & PS2_COMMAND;
 			elsif DEBUG_ADDR /= prev_debug_addr then -- debug address

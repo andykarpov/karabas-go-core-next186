@@ -119,7 +119,7 @@ module karabas_minig_top (
     input wire           MCU_SCK,
     input wire           MCU_MOSI,
     output wire          MCU_MISO,
-    input wire [5:0]     MCU_IO,
+    inout wire [5:0]     MCU_IO, // [0] burst cs_n, [1] burst ready, [2] sd2 cs_n, [3] ft cs_n, [4] never driven
 
     //------------------ midi ----------------
     output wire          MIDI_TX,
@@ -163,7 +163,14 @@ wire [23:0] adc_l, adc_r;
 wire [23:0] vga_rgb;
 wire vga_hs, vga_vs, vga_blank, vga_reset, dvi_only;
 
-karabas_186 karabas_186(
+// burst transfers from the mcu (karabas-go-firmware docs/burst_protocol.md)
+wire mcu_burst_ready;
+assign MCU_IO[1] = mcu_burst_ready;
+assign MCU_IO[0] = 1'bz;
+assign MCU_IO[5:2] = 4'bzzzz;
+
+// Rev.G has MCU_SCK on a global clock pin: bursts at up to 32 MHz
+karabas_186 #(.BURST_MAX_MHZ(32)) karabas_186(
     .clk           (CLK_50MHZ),
     .clk_bus       (clk_bus),
     .clk_vga       (clk_vga),
@@ -200,7 +207,9 @@ karabas_186 karabas_186(
     .mcu_cs_n      (MCU_CS_N),
     .mcu_sck       (MCU_SCK),
     .mcu_mosi      (MCU_MOSI),
-    .mcu_miso      (MCU_MISO)
+    .mcu_miso      (MCU_MISO),
+    .mcu_burst_cs_n(MCU_IO[0]),
+    .mcu_burst_ready(mcu_burst_ready)
 );
 
 // hdmi 

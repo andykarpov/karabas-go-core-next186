@@ -121,7 +121,7 @@ module karabas_go_top (
     output wire MCU_MISO,
     input wire MCU_SPI_FT_CS_N,
     input wire MCU_SPI_SD2_CS_N,    
-    inout wire [1:0] MCU_SPI_IO,
+    inout wire [1:0] MCU_SPI_IO, // [0] burst ready (N9), [1] burst cs_n (M11)
     
     //---------------------------
     output wire MIDI_TX,
@@ -183,6 +183,11 @@ assign VGA_B = vga_rgb[7:0];
 assign VGA_HS = vga_hs;
 assign VGA_VS = vga_vs;
 
+// burst transfers from the mcu (karabas-go-firmware docs/burst_protocol.md)
+wire mcu_burst_ready;
+assign MCU_SPI_IO[0] = mcu_burst_ready;
+assign MCU_SPI_IO[1] = 1'bz;
+
 karabas_186 karabas_186(
     .clk           (CLK_50MHZ),
     .clk_bus       (clk_bus),
@@ -220,7 +225,10 @@ karabas_186 karabas_186(
     .mcu_cs_n      (MCU_CS_N),
     .mcu_sck       (MCU_SCK),
     .mcu_mosi      (MCU_MOSI),
-    .mcu_miso      (MCU_MISO)
+    .mcu_miso      (MCU_MISO),
+    // burst transfers: firmware IO0 (GPIO14) = MCU_SPI_IO[1] (M11), IO1 (GPIO2) = MCU_SPI_IO[0] (N9)
+    .mcu_burst_cs_n (MCU_SPI_IO[1]),
+    .mcu_burst_ready(mcu_burst_ready)
 );
 
 // DAC
