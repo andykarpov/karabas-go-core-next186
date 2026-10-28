@@ -173,6 +173,7 @@ module VGA_CRT(
 	output reg	[9:0]	vcount = 0,
 	output reg			vsync,
 	output reg			vblnk = 0,
+	output reg			vblnk_frame = 0,
 	output reg  [3:0]   char_ln,
 	output reg  [5:0]   char_row,
 
@@ -275,50 +276,68 @@ module VGA_CRT(
 			if (is_mode_400) begin
 				if (v_line == 10'd524) begin
 					v_line <= 0;
+					vblnk_frame <= 0;
+					vblnk <= 1;
+					vsync <= 0;
+					vcount <= 10'd450;
 					char_ln <= line_preset;
 					char_row <= 0;
-					vcount <= 10'd450;
-					vblnk <= 0;
-					vsync <= 0;
 				end else begin
 					v_line <= v_line + 1'd1;
-					// Active content lines 40..439 (400 active lines)
-					if (v_line >= 10'd39 && v_line < 10'd439) begin
+
+					// HDMI frame active for lines 0..479, blanked on 480..524
+					if (v_line == 10'd479)
+						vblnk_frame <= 1;
+
+					// Lines 0..38: Top black border (39 lines, DE=1 for HDMI, internal vblnk=1)
+					if (v_line < 10'd38) begin
+						vblnk <= 1;
+						vsync <= 0;
+						vcount <= 10'd450;
+						char_ln <= line_preset;
+						char_row <= 0;
+					end
+					// Line 39: Pre-arm SDRAM FIFO (1 line before active line 40)
+					else if (v_line == 10'd38) begin
+						vblnk <= 1;
+						vsync <= 0;
+						vcount <= vtotal - 1'd1; // triggers vga_start_fifo in ddr_186.v
+						char_ln <= line_preset;
+						char_row <= 0;
+					end
+					// Line 40: First active line (vcount = 0)
+					else if (v_line == 10'd39) begin
 						vblnk <= 0;
 						vsync <= 0;
-						vcount <= (v_line - 10'd39); // 0 to 399
+						vcount <= 0;
+						char_ln <= line_preset;
+						char_row <= 0;
+					end
+					// Lines 41..439: Active lines 1..399 (399 lines, total 400 active lines)
+					else if (v_line >= 10'd40 && v_line < 10'd439) begin
+						vblnk <= 0;
+						vsync <= 0;
+						vcount <= vcount + 1'd1;
 						char_ln <= char_ln + 1'd1;
 						if (char_ln == replncnt) begin
 							char_ln <= 0;
 							char_row <= char_row + 1'd1;
 						end
 					end
-					// Top border 0..39 (40 lines of black border, DE=1 for HDMI)
-					else if (v_line < 10'd39) begin
-						vblnk <= 0;
-						vsync <= 0;
-						vcount <= 10'd450;
-						char_ln <= line_preset;
-						char_row <= 0;
-					end
-					// Bottom border 440..479 (40 lines of black border, DE=1 for HDMI)
+					// Lines 440..479: Bottom black border (40 lines, DE=1 for HDMI, internal vblnk=1)
 					else if (v_line < 10'd479) begin
-						vblnk <= 0;
+						vblnk <= 1;
 						vsync <= 0;
 						vcount <= 10'd450;
 						char_ln <= line_preset;
 						char_row <= 0;
 					end
-					// Vertical blanking 480..524 (DE=0 for HDMI)
+					// Lines 480..524: Vertical blanking (45 lines, DE=0 for HDMI, internal vblnk=1)
 					else begin
 						vblnk <= 1;
+						vcount <= 10'd450;
 						char_ln <= line_preset;
 						char_row <= 0;
-						// Pre-arm SDRAM FIFO at line 523 right before next frame
-						if (v_line == 10'd523)
-							vcount <= vtotal - 1'd1;
-						else
-							vcount <= 10'd450;
 						// VSync pulse on lines 490..491 (2 lines)
 						if (v_line >= 10'd489 && v_line < 10'd491)
 							vsync <= 1;
@@ -328,6 +347,7 @@ module VGA_CRT(
 				end
 			end else begin
 				// Normal 480-line mode (e.g. Mode 12h, VESA 101h)
+				v_line <= 0;
 				vcount <= vcount + 1'd1;
 				char_ln <= char_ln + 1'd1;
 				if (char_ln == replncnt) begin
@@ -344,6 +364,7 @@ module VGA_CRT(
 				if (vcount == vde || vcount == vblank_start) vblnk <= 1; // overscan is not implemented
 				if (vcount == vsync_start) vsync <= 1;
 				if (vcount == vsync_start + 2'd2) vsync <= 0;
+				vblnk_frame <= vblnk;
 			end
 		end
 

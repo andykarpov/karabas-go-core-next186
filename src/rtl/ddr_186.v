@@ -180,6 +180,7 @@ module system (
 	output wire VGA_VSYNC,
 	output reg VGA_BLANK,
 	output wire VGA_VBLANK,
+	output wire VGA_VBLANK_FRAME,
 	output wire VGA_HBLANK,
 	output wire VGA_RESET,
 	input wire BTN_RESET,	// Reset
@@ -683,10 +684,13 @@ module system (
 		.vcount(vcount),
 		.vsync(VGA_VSYNC),
 		.vblnk(vblnk),
+		.vblnk_frame(vblnk_frame),
 		.char_ln(char_ln),
 		.char_row(char_row)
 	);
+	wire vblnk_frame;
 	assign VGA_VBLANK = vblnk;
+	assign VGA_VBLANK_FRAME = vblnk_frame;
 	assign VGA_HBLANK = hblnk;
 
 	// reset on vmode change

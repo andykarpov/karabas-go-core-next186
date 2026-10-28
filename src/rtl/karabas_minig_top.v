@@ -236,7 +236,10 @@ i2s_transceiver #(.mclk_sclk_ratio(4)) adc(
     .mclk          (clk_adc),
     .sclk          (ADC_BCK),
     .ws            (ADC_LRCK),
+    .sd_tx         (),
     .sd_rx         (ADC_DOUT),
+    .l_data_tx     (24'd0),
+    .r_data_tx     (24'd0),
     .l_data_rx     (adc_l),
     .r_data_rx     (adc_r)
 );

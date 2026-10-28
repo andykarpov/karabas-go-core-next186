@@ -97,12 +97,12 @@ wire ps2_command_wr;
 wire [15:0] cdda_l;
 wire [15:0] cdda_r;
 wire [5:0] core_r, core_g, core_b;
-wire core_hs, core_vs, core_blank, core_vga_reset, core_vb, core_hb;
+wire core_hs, core_vs, core_blank, core_vga_reset, core_vb, core_vb_frame, core_hb;
 wire [15:0] ide_dat_o, ide_dat_i;
 wire [3:0] ide_a;
 wire [1:0] ide_cs;
 wire ide_we;
-reg [1:0] ide_int;
+wire [1:0] ide_int;
 
 system sys_inst(
     .clk_25(clk_25),
@@ -129,6 +129,7 @@ system sys_inst(
     .VGA_VSYNC(core_vs),
     .VGA_BLANK(core_blank),
     .VGA_VBLANK(core_vb),
+    .VGA_VBLANK_FRAME(core_vb_frame),
     .VGA_HBLANK(core_hb),
 	 .VGA_RESET(core_vga_reset),
     .frame_on(),
@@ -144,7 +145,7 @@ system sys_inst(
     .BTN_RESET(reset),
     .BTN_NMI(NMI),
 
-    .RS232_DCE_RXD(),
+    .RS232_DCE_RXD(1'b1),
     .RS232_DCE_TXD(),
     .RS232_EXT_RXD(com1_Rx),
     .RS232_EXT_TXD(com1_Tx),
@@ -164,7 +165,7 @@ system sys_inst(
     .LAUDIO(audio_l),
     .RAUDIO(audio_r),
 
-    .RS232_HOST_RXD(),
+    .RS232_HOST_RXD(1'b1),
     .RS232_HOST_TXD(),
     .RS232_HOST_RST(),
 
@@ -233,7 +234,7 @@ kg_mcu #(
     .ENABLE_UART(0),
     .ENABLE_MATRIX(0),
     .ENABLE_DEBUG(0),
-    .ENABLE_IMG(0),
+    .ENABLE_IMG(1),
     .ENABLE_FILE(1),
     .FILE_CMDS(0),
     .FILE_WR_EACH(1),
@@ -335,18 +336,18 @@ kg_mcu #(
     .SOFTSW_COMMAND(softsw_command),    
     .OSD_COMMAND(osd_command),
     
-    // file mounter (unused for now until task 2)
-    .IMG_MOUNTED(),
-    .IMG_SIZE(),
-    .IMG_DATA_WR(),
-    .IMG_DATA_ADDR(),
-    .IMG_DATA(),
-    .IMG_RESULT_WR(),
-    .IMG_RESULT(),
-    .IMG_SUM(),
-    .IMG_Q_WR(1'b0),
-    .IMG_Q_DI(24'd0),
-    .IMG_Q_ACK(),
+    // file mounter
+    .IMG_MOUNTED(img_mounted),
+    .IMG_SIZE(img_size),
+    .IMG_DATA_WR(img_data_wr),
+    .IMG_DATA_ADDR(img_data_addr),
+    .IMG_DATA(img_data),
+    .IMG_RESULT_WR(img_result_wr),
+    .IMG_RESULT(img_result),
+    .IMG_SUM(img_sum),
+    .IMG_Q_WR(img_q_wr),
+    .IMG_Q_DI(img_q_di),
+    .IMG_Q_ACK(img_q_ack),
     .IMG_PHYS_WR(),
     .IMG_PHYS(),
     .IMG_FLUSH(),
@@ -364,6 +365,117 @@ kg_mcu #(
     
     .BUSY(mcu_busy)
 );
+
+// --------- File mounter & ATA Hard Disk ------------
+
+wire [7:0] img_mounted;
+wire [63:0] img_size;
+wire img_data_wr;
+wire [8:0] img_data_addr;
+wire [7:0] img_data;
+wire img_result_wr;
+wire [7:0] img_result;
+wire [15:0] img_sum;
+wire img_q_wr;
+wire [23:0] img_q_di;
+wire img_q_ack;
+
+wire [7:0] sdc_img_mounted;
+wire [63:0] sdc_img_size;
+wire [7:0] sdc_rd;
+wire [7:0] sdc_wr;
+wire [31:0] sdc_sector;
+wire sdc_busy, sdc_done, sdc_error;
+wire [2:0] sdc_slot;
+wire sdc_byte_in_strobe;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_byte_in_data;
+wire [7:0] sdc_byte_out_data;
+wire sdc_active;
+
+img_sdc #(
+    .OUT_LATENCY(3),
+    .TIMEOUT(24'd10000000), // ~200ms at 50MHz
+    .RETRIES(2'd3)
+) u_img_sdc(
+    .clk(clk_bus),
+    .reset(areset),
+
+    .img_mounted(img_mounted),
+    .img_size(img_size),
+    .img_data_wr(img_data_wr),
+    .img_data_addr(img_data_addr),
+    .img_data(img_data),
+    .img_result_wr(img_result_wr),
+    .img_result(img_result),
+    .img_sum(img_sum),
+    .img_q_wr(img_q_wr),
+    .img_q_di(img_q_di),
+    .img_q_ack(img_q_ack),
+
+    .sdc_img_mounted(sdc_img_mounted),
+    .sdc_img_size(sdc_img_size),
+    .sdc_rd(sdc_rd),
+    .sdc_wr(sdc_wr),
+    .sdc_sector(sdc_sector),
+    .sdc_busy(sdc_busy),
+    .sdc_done(sdc_done),
+    .sdc_error(sdc_error),
+    .sdc_slot(sdc_slot),
+    .sdc_byte_in_strobe(sdc_byte_in_strobe),
+    .sdc_byte_addr(sdc_byte_addr),
+    .sdc_byte_in_data(sdc_byte_in_data),
+    .sdc_byte_out_data(sdc_byte_out_data),
+    .active(sdc_active)
+);
+
+wire [15:0] hdf_dout;
+wire [1:0] hdf_rd, hdf_wr;
+wire [31:0] hdf_sector;
+wire [7:0] hdf_byte_out_data;
+wire hdf_own = (sdc_slot < 3'd2);
+
+hdf_ata #(
+    .DEF_HEADS(5'd16),
+    .DEF_SPT(8'd63),
+    .SYNC_BUS(1)
+) u_hdf_ata(
+    .clk(clk_bus),
+    .reset(areset),
+    .ata_reset(reset),
+    .dev0_en(sdc_img_mounted[0]),
+    .dev(),
+    .dev1_here(),
+
+    .a(ide_a[2:0]),
+    .cs_n({ ~(ide_cs[0] & ide_a[3]), ~(ide_cs[0] & ~ide_a[3]) }),
+    .rd_n(~(ide_cs[0] & ~ide_we)),
+    .wr_n(~(ide_cs[0] & ide_we)),
+    .din(ide_dat_o),
+    .dout(hdf_dout),
+
+    .img_mounted(sdc_img_mounted[1:0]),
+    .img_size(sdc_img_size),
+    .sdc_rd(hdf_rd),
+    .sdc_wr(hdf_wr),
+    .sdc_sector(hdf_sector),
+    .sdc_busy(sdc_busy & hdf_own),
+    .sdc_done(sdc_done & hdf_own),
+    .sdc_error(sdc_error),
+    .sdc_byte_in_strobe(sdc_byte_in_strobe & hdf_own),
+    .sdc_byte_addr(sdc_byte_addr),
+    .sdc_byte_in_data(sdc_byte_in_data),
+    .sdc_byte_out_data(hdf_byte_out_data),
+    .led()
+);
+
+assign sdc_rd = { 6'b000000, hdf_rd };
+assign sdc_wr = { 6'b000000, hdf_wr };
+assign sdc_sector = hdf_sector;
+assign sdc_byte_out_data = hdf_byte_out_data;
+
+assign ide_dat_i = hdf_dout;
+assign ide_int = 2'b00;
 
 kg_sync #(.W(1)) u_sync_dvi(
     .clk(clk_vga),
@@ -438,7 +550,7 @@ overlay #(
 
 assign vga_hs = ~core_hs;
 assign vga_vs = ~core_vs;
-assign vga_blank = core_hb || core_vb;
+assign vga_blank = core_hb || core_vb_frame;
 assign vga_reset = core_vga_reset;
 
 // ---------- misc -----------------------
