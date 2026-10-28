@@ -263,25 +263,88 @@ module VGA_CRT(
 
 	//******************************************************************//
 	// This logic describes a 10-bit vertical position counter.         //
+	// When in 400-line mode (vtotal < 480), frame into standard 640x480 //
+	// at 60 Hz (525 lines total, 480 active, 40 lines top/bottom border) //
+	// for HDMI monitors requiring standard VESA / CEA-861 timings.      //
 	//******************************************************************//
+	wire is_mode_400 = (vtotal < 10'd480);
+	reg [9:0] v_line = 0;
+
 	always @(posedge clk_vga)
 		if(ce_vga && hch_en && hchar == htotal + 4'd5) begin
-			vcount <= vcount + 1'd1;
-			char_ln <= char_ln + 1'd1;
-			if (char_ln == replncnt) begin
-				char_ln <= 0;
-				char_row <= char_row + 1'd1;
+			if (is_mode_400) begin
+				if (v_line == 10'd524) begin
+					v_line <= 0;
+					char_ln <= line_preset;
+					char_row <= 0;
+					vcount <= 10'd450;
+					vblnk <= 0;
+					vsync <= 0;
+				end else begin
+					v_line <= v_line + 1'd1;
+					// Active content lines 40..439 (400 active lines)
+					if (v_line >= 10'd39 && v_line < 10'd439) begin
+						vblnk <= 0;
+						vsync <= 0;
+						vcount <= (v_line - 10'd39); // 0 to 399
+						char_ln <= char_ln + 1'd1;
+						if (char_ln == replncnt) begin
+							char_ln <= 0;
+							char_row <= char_row + 1'd1;
+						end
+					end
+					// Top border 0..39 (40 lines of black border, DE=1 for HDMI)
+					else if (v_line < 10'd39) begin
+						vblnk <= 0;
+						vsync <= 0;
+						vcount <= 10'd450;
+						char_ln <= line_preset;
+						char_row <= 0;
+					end
+					// Bottom border 440..479 (40 lines of black border, DE=1 for HDMI)
+					else if (v_line < 10'd479) begin
+						vblnk <= 0;
+						vsync <= 0;
+						vcount <= 10'd450;
+						char_ln <= line_preset;
+						char_row <= 0;
+					end
+					// Vertical blanking 480..524 (DE=0 for HDMI)
+					else begin
+						vblnk <= 1;
+						char_ln <= line_preset;
+						char_row <= 0;
+						// Pre-arm SDRAM FIFO at line 523 right before next frame
+						if (v_line == 10'd523)
+							vcount <= vtotal - 1'd1;
+						else
+							vcount <= 10'd450;
+						// VSync pulse on lines 490..491 (2 lines)
+						if (v_line >= 10'd489 && v_line < 10'd491)
+							vsync <= 1;
+						else
+							vsync <= 0;
+					end
+				end
+			end else begin
+				// Normal 480-line mode (e.g. Mode 12h, VESA 101h)
+				vcount <= vcount + 1'd1;
+				char_ln <= char_ln + 1'd1;
+				if (char_ln == replncnt) begin
+					char_ln <= 0;
+					char_row <= char_row + 1'd1;
+				end
+				if (vcount == vtotal) begin
+					char_ln <= line_preset;
+					vcount <= 0;
+					vblnk <= 0;
+					vsync <= 0;
+					char_row <= 0;
+				end
+				if (vcount == vde || vcount == vblank_start) vblnk <= 1; // overscan is not implemented
+				if (vcount == vsync_start) vsync <= 1;
+				if (vcount == vsync_start + 2'd2) vsync <= 0;
 			end
-			if (vcount == vtotal) begin
-				char_ln <= line_preset;
-				vcount <= 0;
-				vblnk <= 0;
-				vsync <= 0;
-				char_row <= 0;
-			end
-			if (vcount == vde || vcount == vblank_start) vblnk <= 1; // overscan is not implemented
-			if (vcount == vsync_start) vsync <= 1;
-			if (vcount == vsync_start + 2'd2) vsync <= 0;
 		end
 
 endmodule

@@ -37,7 +37,7 @@ MAP_minig = $(MAP_mini)
 PAR_minig = $(PAR_mini)
 
 # included by the sources, not in the prj
-INCLUDES = $(wildcard rtl/*.mem rtl/jtopl/ver/verilator/mmr.lut) 186Code/BIOS/BIOS_Next186.com
+INCLUDES = $(wildcard rtl/*.mem rtl/jtopl/ver/verilator/mmr.lut) 186Code/BIOS/BIOS_Next186.com $(wildcard ../modules/rtl/mcu/*.vh)
 
 .PHONY: all clean $(BOARDS) $(BOARDS:=-xst) $(BOARDS:=-impl) $(BOARDS:=-core) $(BOARDS:=-report)
 

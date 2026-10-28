@@ -66,7 +66,7 @@ dcm dcm_system (
     .CLK_OUT1(clk_sdr_out), // 100 @ 180
     .CLK_OUT2(clk_sdr),     // 100
     .CLK_OUT3(clk_cpu),     // 50
-    .CLK_OUT4(clk_dsp),     // 50
+    .CLK_OUT4(clk_dsp),     // 40
 	 .CLK_OUT5(clk_25),      // 25
     .LOCKED(locked)
 );
@@ -97,7 +97,7 @@ wire ps2_command_wr;
 wire [15:0] cdda_l;
 wire [15:0] cdda_r;
 wire [5:0] core_r, core_g, core_b;
-wire core_hs, core_vs, core_blank, core_vga_reset, core_vb;
+wire core_hs, core_vs, core_blank, core_vga_reset, core_vb, core_hb;
 wire [15:0] ide_dat_o, ide_dat_i;
 wire [3:0] ide_a;
 wire [1:0] ide_cs;
@@ -129,6 +129,7 @@ system sys_inst(
     .VGA_VSYNC(core_vs),
     .VGA_BLANK(core_blank),
     .VGA_VBLANK(core_vb),
+    .VGA_HBLANK(core_hb),
 	 .VGA_RESET(core_vga_reset),
     .frame_on(),
 
@@ -222,7 +223,27 @@ wire [31:0] romload_a;
 wire [7:0] romload_d;
 wire romload_active, romload_wr;
 
-mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
+wire [1:0] mcu_btns;
+wire mcu_dvi_only;
+
+kg_mcu #(
+    .BURST_MAX_MHZ(BURST_MAX_MHZ),
+    .CS_FILTER(3),
+    .ENABLE_RTC(0),
+    .ENABLE_UART(0),
+    .ENABLE_MATRIX(0),
+    .ENABLE_DEBUG(0),
+    .ENABLE_IMG(0),
+    .ENABLE_FILE(1),
+    .FILE_CMDS(0),
+    .FILE_WR_EACH(1),
+    .FILE_TO_ROM(1),
+    .ENABLE_FT(0),
+    .ENABLE_SD2(0),
+    .ENABLE_ESP(0),
+    .ENABLE_PS2_CMD(1),
+    .ENABLE_FLASHBOOT(0)
+) mcu(
     .CLK(clk_bus),
     .N_RESET(~areset),
     
@@ -230,6 +251,8 @@ mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
     .MCU_MISO(mcu_miso),
     .MCU_SCK(mcu_sck),
     .MCU_SS(mcu_cs_n),
+    .MCU_SPI_FT_SS(1'b1),
+    .MCU_SPI_SD2_SS(1'b1),
     .MCU_BURST_CS_N(mcu_burst_cs_n),
     .MCU_BURST_READY(mcu_burst_ready),
     
@@ -239,31 +262,113 @@ mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
     .MS_B(ms_b),
     .MS_UPD(ms_upd),
     
+    .KB_STATUS(),
+    .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
     .KB_SCANCODE(ps2_scancode),
     .KB_SCANCODE_UPD(ps2_scancode_upd),
     .XT_SCANCODE(xt_scancode),
     .XT_SCANCODE_UPD(xt_scancode_upd),
     .PS2_COMMAND(ps2_command),
-    .PS2_COMMAND_WR(ps2_command_wr),  
+    .PS2_COMMAND_WR(ps2_command_wr),
     
     .JOY_L(joy_l),
     .JOY_R(joy_r),
+    .BTNS(mcu_btns),
     
+    .RTC_A(8'h0),
+    .RTC_DI(8'h0),
+    .RTC_DO(),
+    .RTC_CS(1'b0),
+    .RTC_WR_N(1'b1),
+    
+    .UART_RX_DATA(),
+    .UART_RX_IDX(),
+    .UART_TX_DATA(8'h0),
+    .UART_TX_WR(1'b0),
+    .UART_TX_MODE(1'b0),
+    .UART_DLM(8'h0),
+    .UART_DLL(8'h0),
+    .UART_DLM_WR(1'b0),
+    .UART_DLL_WR(1'b0),
+    
+    .MATRIX_CMD(24'h0),
+    .MATRIX_CMD_WR(1'b0),
+    
+    .DEBUG_ADDR(16'h0),
+    .DEBUG_DATA(16'h0),
+    
+    // rom loader
     .ROMLOADER_ACTIVE(romload_active),
     .ROMLOAD_ADDR(romload_a),
     .ROMLOAD_DATA(romload_d),
     .ROMLOAD_WR(romload_wr),
+    .IOCTL_ACTIVE(),
     
+    // file loader (unused)
+    .FILELOAD_RESET(),
+    .FILELOAD_ACTIVE(),
+    .FILELOAD_SIZE(),
+    .FILELOAD_ADDR(),
+    .FILELOAD_DATA(),
+    .FILELOAD_WR(),
+    
+    // ft812
+    .FT_SPI_ON(),
+    .FT_VGA_ON(),
+    .FT_RESET(),
+    .FT_SCK(),
+    .FT_MOSI(),
+    .FT_MISO(1'b0),
+    .FT_CS_N(),
+    
+    // sd2
+    .SD2_SCK(),
+    .SD2_MOSI(),
+    .SD2_MISO(1'b0),
+    .SD2_CS_N(),
+    
+    // hw setup
     .HWID(hwid),
-    .DVI_ONLY(dvi_only),
+    .DVI_ONLY(mcu_dvi_only),
     
+    // soft switches, osd
     .SOFTSW_COMMAND(softsw_command),    
     .OSD_COMMAND(osd_command),
-	 
-	 .DEBUG_ADDR(16'h0000),
-	 .DEBUG_DATA(16'h0000),
+    
+    // file mounter (unused for now until task 2)
+    .IMG_MOUNTED(),
+    .IMG_SIZE(),
+    .IMG_DATA_WR(),
+    .IMG_DATA_ADDR(),
+    .IMG_DATA(),
+    .IMG_RESULT_WR(),
+    .IMG_RESULT(),
+    .IMG_SUM(),
+    .IMG_Q_WR(1'b0),
+    .IMG_Q_DI(24'd0),
+    .IMG_Q_ACK(),
+    .IMG_PHYS_WR(),
+    .IMG_PHYS(),
+    .IMG_FLUSH(),
+    
+    // esp
+    .ESP_UART_TX_DATA(),
+    .ESP_UART_TX_WR(),
+    .ESP_UART_RX_DATA(8'h0),
+    .ESP_UART_RX_WR(1'b0),
+    .ESP_UART_RX_ACK(),
+    
+    // flashboot
+    .FLASHBOOT_START(1'b0),
+    .FLASHBOOT_COREID(5'd0),
     
     .BUSY(mcu_busy)
+);
+
+kg_sync #(.W(1)) u_sync_dvi(
+    .clk(clk_vga),
+    .d(mcu_dvi_only),
+    .q(dvi_only)
 );
 
 //---------- Soft switches ------------
@@ -272,18 +377,25 @@ wire kb_reset, kb_nmi, kb_fake286, kb_joyswap, kb_midi, kb_adlibhide;
 wire [2:0] kb_speed;
 wire [1:0] kb_isawait;
 
-soft_switches soft_switches(
-    .CLK(clk_bus),
-    .SOFTSW_COMMAND(softsw_command),
-    .SPEED(kb_speed),
-    .ISAWAIT(kb_isawait),
-    .FAKE286(kb_fake286),
-    .JOYSWAP(kb_joyswap),
-    .MIDI(kb_midi),
-    .ADLIBHIDE(kb_adlibhide),
-    .NMI(kb_nmi),
-    .RESET(kb_reset)
+wire [63:0] softsw_regs;
+kg_soft_switches #(
+    .N(8),
+    .INIT(64'h0000_0001_0001_0000)
+) u_softsw(
+    .clk(clk_bus),
+    .command(softsw_command),
+    .regs(softsw_regs),
+    .upd()
 );
+
+assign kb_speed     = softsw_regs[0*8 +: 3];
+assign kb_isawait   = softsw_regs[1*8 +: 2];
+assign kb_fake286   = softsw_regs[2*8];
+assign kb_joyswap   = softsw_regs[3*8];
+assign kb_midi      = softsw_regs[4*8];
+assign kb_adlibhide = softsw_regs[5*8];
+assign kb_nmi       = softsw_regs[6*8];
+assign kb_reset     = softsw_regs[7*8];
 
 // --------- BIOS ROM loader ------------
 
@@ -312,7 +424,10 @@ bios_loader bios_loader(
 
 // --------- OSD ------------
 
-overlay overlay(
+overlay #(
+    .H_OFFSET(104),
+    .V_OFFSET(32)
+) overlay(
 	.CLK(clk_vga),
 	.RGB_I({core_r, 2'b00, core_g, 2'b00, core_b, 2'b00}),
 	.RGB_O(vga_rgb),
@@ -323,7 +438,7 @@ overlay overlay(
 
 assign vga_hs = ~core_hs;
 assign vga_vs = ~core_vs;
-assign vga_blank = core_blank || core_vb;
+assign vga_blank = core_hb || core_vb;
 assign vga_reset = core_vga_reset;
 
 // ---------- misc -----------------------
@@ -341,7 +456,7 @@ always @(*) begin
 	endcase
 end
 
-always @(posedge clk_cpu) reset <= kb_reset | !bios_loaded;
+always @(posedge clk_cpu) reset <= kb_reset | !bios_loaded | mcu_btns[1];
 
 reg  NMI;
 integer nmi_cnt = 0;
