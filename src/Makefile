@@ -1,5 +1,5 @@
 # Command line build of the Next186 core for the three boards: the steps and options of the ISE 14.7
-# project navigator (the .xise projects of the boards).
+# project navigator (the .xise projects of the boards, removed since).
 #
 #   make                 all three boards (next186.kg1, next186.kg2, next186.kg3)
 #   make go|mini|minig   one board: synthesis, implementation, bitstream, .kg file

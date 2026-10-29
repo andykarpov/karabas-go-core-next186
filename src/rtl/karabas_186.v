@@ -2,7 +2,7 @@
 `default_nettype none
 
 module karabas_186 #(
-    parameter BURST_MAX_MHZ = 0 // see mcu.vhd
+    parameter BURST_MAX_MHZ = 0 // see kg_mcu
 )(
     input  wire         clk,
 
