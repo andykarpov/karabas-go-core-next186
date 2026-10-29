@@ -15,6 +15,7 @@ The core is on branch `master`. Branch `kg-modules` moves it to `karabas-go-modu
 - `src/rtl/Next186`: the CPU. Also in `src/rtl`: `unit186.v`, `ddr_186.v`, `cache_controller.v`, `sdram.v`, `vga.v`, `PIC_8259.v`, `timer8253.v`, `KB_8042.v`, `jtopl`, `sn76489`, `uart`, `midi`, `fifo`.
 - `modules/rtl`: the shared code, listed in the `.prj` files as `../modules/rtl/...`: `mcu` (`kg_mcu`, `kg_burst_rx`, `img_sdc`, `hdf_ata`), `ctl` (`kg_soft_switches`, `kg_sync`), `video/osd` (`overlay`, `pix_doubler`), `video/hdmi` (`zhdmi_*`, `dvi`), `mem/kg_fifo.v`.
 - `src/ipcore_dir`: the CoreGen IP (`dcm`, `dcm_cpu`, `dcm_dsp`, block RAMs and fifos such as `cache`, `DAC_SRAM`, `datamem16`, `sndfifo`). Sound (Tandy `sn76489_top`, `jtopl2`) is instantiated in `ddr_186.v`.
+- `src/sim`: `tb_ata.v` (ISim, `run_ata_sim.sh`): `hdf_ata` + `img_sdc` with a model of the MCU, BIOS-style reads before and after a CPU reset; ends with `tb_ata: 0 errors`.
 - `src/186Code`: the x86 side. `BIOS/` has the BIOS source and its build, plus DOS tools and notes (`How to create FreeDos bootable SD card with a big FAT32 partition.txt`).
 
 ## Build
@@ -25,7 +26,7 @@ The core is on branch `master`. Branch `kg-modules` moves it to `karabas-go-modu
 
 ## MCU link
 
-- `type: osd`, `eeprom_bank: 255`, `spi_freq` 16 (Go, Mini) and 32 (Mini G). The OSD items: Speed, ISA Wait, Fake 286, Joy swap, MIDI, Adlib, HDD0 Mode, the file slots HDD0 / HDD1, NMI and Reset (Ctrl+Alt+Del). The switches (all items but the file slots) are in the order of `softsw_regs` in `karabas_186.v`.
+- `type: osd`, `eeprom_bank: 255`, `spi_freq` 16 (Go, Mini) and 32 (Mini G). The OSD items: Speed, ISA Wait, Fake 286, Joy swap, MIDI, Adlib, HDD0 Mode, the file slots HDD0 / HDD1, NMI and Reset (Ctrl+Alt+Del). The switch index is the item position counting the file slots too (HDD0 7, HDD1 8, NMI 9, Reset 10); register n of `softsw_regs` in `karabas_186.v` is item n.
 - The BIOS comes in through the ROM loader (`CMD_ROMBANK` / `CMD_ROMDATA` / `CMD_ROMLOADER`) to `bios_loader` (`rtl/bios_loader_mist.v`, module `bios_loader`).
 - Bursts: `kg_mcu` answers `CMD_CAPS` with `BURST_MAX_MHZ`: 0 on Go and Mini (bursts at the link clock), 32 on Mini G (`karabas_minig_top.v`).
 - HDD images: slots 0 and 1 go through `img_sdc` to `hdf_ata` (ATA at the IDE ports of the system, `SYNC_BUS=1`). HDD0 Mode: Auto (image device 0 and the FPGA SD card), Image (the SD card chip select is held off), SD2 card (image device 0 off). The BIOS has an ATA PIO driver for it (`ataread` / `atawrite` / `ataverify`).

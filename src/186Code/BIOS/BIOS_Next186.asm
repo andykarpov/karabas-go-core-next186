@@ -3761,11 +3761,18 @@ sloop:
 		db		0eah
 		dw		100h,0f000h
 
+msgboot1   db   'MBR read: AX=', 0
+msgboot2   db   ', ATA error:status=', 0
+msgboot3   db   ', failed step=', 0
+msgboot4   db   ', signature=', 0
 booterrmsg db   'No boot device available, waiting on RS232 (115200bps, f000:100) ...', 13, 10, 0
 int18 endp
 
 ; --------------------- INT 19h - OS Bootstrap loader ------------------
 int19 proc near
+		push    40h
+		pop     ds
+		mov     byte ptr ds:[8eh], 0
 		mov     ax, 201h
 		mov     cx, 1
 		mov     dx, 80h
@@ -3779,7 +3786,34 @@ int19 proc near
 		mov     dl, 80h
 		db      0eah
 		dw      7c00h, 0     ; jmp far 0000h:7c00h
-int19err:
+int19err:                       ; the MBR read: AX of INT 13h, ATA status, error, step (ataread_err)
+		push    ax
+		push    cs
+		pop     es
+		xor     bx, bx
+		mov     si, offset msgboot1
+		call    prts
+		pop     ax
+		call    prhex
+		mov     si, offset msgboot2
+		call    prts
+		mov     ax, ds:[8ch]
+		call    prhex
+		mov     si, offset msgboot3
+		call    prts
+		mov     al, ds:[8eh]
+		mov     ah, 0
+		call    prhex
+		mov     si, offset msgboot4
+		call    prts
+		push    0
+		pop     es
+		mov     ax, es:[7dfeh]
+		call    prhex
+		mov     ax, 0e0dh
+		int     10h
+		mov     ax, 0e0ah
+		int     10h
 		int     18h
 int19 endp
 
@@ -4637,7 +4671,8 @@ ataread_wbsy_loop:
 		jnz     short ataread_wbsy_loop
 		dec     bx
 		jnz     short ataread_wbsy
-		jmp     short ataread_err
+		mov     ah, 1           ; BSY timeout
+		jmp     ataread_err
 
 ataread_bsyok:
 		; 2. Send ATA parameters
@@ -4683,7 +4718,7 @@ ataread_wdrq_loop:
 		test    al, 80h         ; BSY
 		jnz     short ataread_wdrq_next
 		test    al, 01h         ; ERR
-		jnz     short ataread_err
+		jnz     short ataread_errbit
 		test    al, 08h         ; DRQ
 		jnz     short ataread_drqok
 ataread_wdrq_next:
@@ -4691,7 +4726,11 @@ ataread_wdrq_next:
 		jnz     short ataread_wdrq_loop
 		dec     bx
 		jnz     short ataread_wdrq
-		jmp     short ataread_err
+		mov     ah, 2           ; DRQ timeout
+		jmp     ataread_err
+ataread_errbit:
+		mov     ah, 3           ; ERR
+		jmp     ataread_err
 
 ataread_drqok:
 		; 4. Normalize ES:DI to avoid segment overflow
@@ -4715,7 +4754,16 @@ ataread_drqok:
 		dec     cx
 		jmp     ataread_loop
 
-ataread_err:
+ataread_err:    ; AL = ATA status, AH = the failed step
+		push    ds
+		push    40h
+		pop     ds
+		mov     ds:[8ch], al    ; debug: ATA status, error, failed step (40:8C..8E)
+		mov     ds:[8eh], ah
+		mov     dx, ATA_ERROR
+		in      al, dx
+		mov     ds:[8dh], al
+		pop     ds
 		mov     ax, [bp-6]
 		sub     ax, cx
 		jmp     short ataread_exit

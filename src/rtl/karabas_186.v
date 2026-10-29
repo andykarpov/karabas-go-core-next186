@@ -496,10 +496,11 @@ wire [2:0] kb_speed;
 wire [1:0] kb_isawait;
 wire [1:0] kb_hdd0_mode;
 
-wire [71:0] softsw_regs;
+// register n = OSD item n of core*.json; the file items (HDD0 7, HDD1 8) have no register value
+wire [87:0] softsw_regs;
 kg_soft_switches #(
-    .N(9),
-    .INIT(72'h00_0000_0001_0001_0000)
+    .N(11),
+    .INIT(88'h00_0000_0000_0001_0001_0000)
 ) u_softsw(
     .clk(clk_bus),
     .command(softsw_command),
@@ -514,8 +515,8 @@ assign kb_joyswap   = softsw_regs[3*8];
 assign kb_midi      = softsw_regs[4*8];
 assign kb_adlibhide = softsw_regs[5*8];
 assign kb_hdd0_mode = softsw_regs[6*8 +: 2];
-assign kb_nmi       = softsw_regs[7*8];
-assign kb_reset     = softsw_regs[8*8];
+assign kb_nmi       = softsw_regs[9*8];
+assign kb_reset     = softsw_regs[10*8];
 
 // --------- BIOS ROM loader ------------
 
