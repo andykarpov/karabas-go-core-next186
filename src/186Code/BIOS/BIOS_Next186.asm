@@ -4525,6 +4525,7 @@ ataread proc near
 		push    dx
 		push    si
 		push    di
+		push    es              ; ES is changed by the buffer normalization
 
 		mov     [bp-2], dx      ; LBA bits 16-31
 		mov     [bp-4], ax      ; LBA bits 0-15
@@ -4636,6 +4637,7 @@ ataread_done:
 		mov     ax, [bp-6]
 
 ataread_exit:
+		pop     es
 		pop     di
 		pop     si
 		pop     dx
