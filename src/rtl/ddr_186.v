@@ -184,6 +184,7 @@ module system (
 	output wire VGA_HBLANK,
 	output wire VGA_RESET,
 	input wire BTN_RESET,	// Reset
+	output wire CPU_RESET,	// the CPU is held in reset (BTN_RESET or the 8042 reset)
 	input wire BTN_NMI,		// NMI
 	output wire [7:0]LED,	// HALT
 	input wire RS232_DCE_RXD,
@@ -353,6 +354,7 @@ module system (
 	reg s_RS232_DCE_RXD;
 	reg s_RS232_HOST_RXD;
 	reg [18:0]rstcount = 0;
+	assign CPU_RESET = !rstcount[18];
 	reg [19:0]s_displ_on = 0; // clk_25 delayed displ_on
 	reg [1:0]vga13 = 0;       // 1 for mode 13h
 	reg [1:0]vgatext = 0;     // 1 for text mode

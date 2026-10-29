@@ -29,9 +29,9 @@ JSON_mini = core_mini.json
 JSON_minig = core_minig.json
 
 # map / par options (as the .xise projects had them)
-MAP_go = -logic_opt off -ol high -xe n -t 1 -xt 3 -register_duplication off -r 4 -global_opt off -mt off -ir off -pr b -lc off -power off
+MAP_go = -logic_opt off -ol high -xe n -t 2 -xt 3 -register_duplication off -r 4 -global_opt off -mt off -ir off -pr b -lc off -power off
 PAR_go = -ol high -xe n -mt off
-MAP_mini = -logic_opt off -ol high -t 1 -xt 3 -register_duplication off -r 4 -global_opt off -mt off -ir off -pr off -lc off -power off
+MAP_mini = -logic_opt off -ol high -t 2 -xt 3 -register_duplication off -r 4 -global_opt off -mt off -ir off -pr off -lc off -power off
 PAR_mini = -ol high -mt off
 MAP_minig = $(MAP_mini)
 PAR_minig = $(PAR_mini)

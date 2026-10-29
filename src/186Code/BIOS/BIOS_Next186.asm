@@ -2818,7 +2818,16 @@ DiskRead1:
 		call    HCStoLBA
 		pop     cx
 		push    cx        
+		cmp     bp, sdwrite
+		jne     short DiskRead2
+		mov     di, 28          ; the return address of INT 13h, from SP in wrtrap
+		call    wrtrap
+		jnc     short DiskRead2
+		xor     ax, ax          ; blocked: no sector written
+		jmp     short DiskRead3
+DiskRead2:
 		call    bp              ; DX:AX sector, ES:BX buffer, CX=sectors, returns AX=read sectors
+DiskRead3:
 		pop     cx
 		sub     cx, ax
 		neg     cx              ; CF=1 if cx != 0
@@ -2911,7 +2920,16 @@ DiskExtRead1:
 		mov     dx, [si+10]
 		push    ds
 		push    si
+		cmp     bp, sdwrite
+		jne     short DiskExtRead2
+		mov     di, 34          ; the return address of INT 13h, from SP in wrtrap
+		call    wrtrap
+		jnc     short DiskExtRead2
+		xor     ax, ax          ; blocked: no sector written
+		jmp     short DiskExtRead3
+DiskExtRead2:
 		call    bp
+DiskExtRead3:
 		pop     si
 		pop     ds
 		sub     ax, [si+2]
@@ -2925,7 +2943,7 @@ DiskExtRead1:
 
 DiskExtGetParams:
 		cmp     dl, 80h
-		jne     short notready
+		jne     notready
 		push    ax
 		mov     ax, HDSize   
 		mov     bp, sp
@@ -3992,6 +4010,75 @@ dispAX1:
 		pop     dx
 		ret        
 ten     dw      10
+
+prhex:  ; AX as 4 hex digits
+		push    cx
+		mov     cx, 4
+prhex1:
+		rol     ax, 4
+		push    ax
+		and     al, 0fh
+		add     al, '0'
+		cmp     al, '9'
+		jbe     short prhex2
+		add     al, 7
+prhex2:
+		mov     ah, 0eh
+		int     10h
+		pop     ax
+		loop    short prhex1
+		pop     cx
+		ret
+
+; A write of INT 13h to sector 0 (the MBR) is not done: it shows where INT 13h was called from
+; and waits for a key. A debug trap for the MBR that was overwritten with memory of COMMAND.COM.
+wrtrap: ; DX:AX = LBA, ES:BX = buffer, SS:SP+DI = the return address of INT 13h. CF=1: blocked
+		push    ax
+		or      ax, dx
+		pop     ax
+		jz      short wrtrap1
+		clc
+		ret
+wrtrap1:
+		pusha
+		push    es
+		mov     si, sp
+		add     si, di
+		add     si, 18          ; pusha, es
+		push    bx              ; buffer offset
+		push    es              ; buffer segment
+		push    word ptr ss:[si]    ; IP
+		push    word ptr ss:[si+2]  ; CS
+		push    cs
+		pop     es
+		xor     bx, bx
+		mov     si, offset msgwrtrap1
+		call    prts
+		pop     ax
+		call    prhex
+		mov     ax, 0e00h + ':'
+		int     10h
+		pop     ax
+		call    prhex
+		mov     si, offset msgwrtrap2
+		call    prts
+		pop     ax
+		call    prhex
+		mov     ax, 0e00h + ':'
+		int     10h
+		pop     ax
+		call    prhex
+		mov     si, offset msgwrtrap3
+		call    prts
+		mov     ah, 0
+		int     16h
+		pop     es
+		popa
+		stc
+		ret
+msgwrtrap1  db 13, 10, 'INT 13h write to the MBR blocked, called from ', 0
+msgwrtrap2  db ', buffer ', 0
+msgwrtrap3  db 13, 10, 'Press a key', 13, 10, 0
 
 prts:   ; es:si = string
 		mov     ah, 0eh    

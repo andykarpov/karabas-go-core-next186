@@ -103,6 +103,7 @@ wire [3:0] ide_a;
 wire [1:0] ide_cs;
 wire ide_we;
 wire [1:0] ide_int;
+wire cpu_reset;
 
 system sys_inst(
     .clk_25(clk_25),
@@ -143,6 +144,7 @@ system sys_inst(
     .LED(),
 
     .BTN_RESET(reset),
+    .CPU_RESET(cpu_reset),
     .BTN_NMI(NMI),
 
     .RS232_DCE_RXD(1'b1),
@@ -446,7 +448,7 @@ hdf_ata #(
 ) u_hdf_ata(
     .clk(clk_bus),
     .reset(areset),
-    .ata_reset(reset),
+    .ata_reset(cpu_reset), // the CPU reset: reset, and the 8042 reset (Ctrl+Alt+Del of DOS)
     .dev0_en(hdd0_dev0_en),
     .dev(),
     .dev1_here(),
