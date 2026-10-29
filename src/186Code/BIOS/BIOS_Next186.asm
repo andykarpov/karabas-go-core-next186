@@ -415,6 +415,10 @@ COMFlush:
 		shr     ax, 1
 		call    dispAX
 		mov     si, offset msgmb
+		cmp     byte ptr HDIsIde, 1
+		jne     short msg_hd_prt
+		mov     si, offset msgata
+msg_hd_prt:
 		call    prts
 		test    byte ptr KbdFlags3, 10h
 		jz      nokbmsg
@@ -440,6 +444,7 @@ bioscont    db 13, 10, 'CPU: 80186 50Mhz (50MIPS, 100Mhz 32bit bus)', 13, 10
             db 'RAM: 32MB SDR 100Mhz 16bit', 13, 10
             db 'Cache: 8KB, 4-way, 128x64 bytes data/inst', 13, 10
 			db 'HD0: ', 0
+msgata      db 'MB Virtual HDD', 13, 10, 0
 
 ; ---------------------------- INT 07 ---------------------
 int07 proc near ; coprocessor ESC sequence
@@ -3751,6 +3756,9 @@ int19 proc near
 		mov     bx, 7c00h
 		int     13h
 		jc      int19err
+		cmp     word ptr es:[7dfeh], 0aa55h
+		jne     int19err
+		mov     dl, 80h
 		db      0eah
 		dw      7c00h, 0     ; jmp far 0000h:7c00h
 int19err:
@@ -4425,15 +4433,22 @@ atainit proc near
 		cmp     al, 00h
 		je      short atainit_none
 
-		mov     cx, 0ffffh
+		push    bx
+		mov     bx, 50
 atainit_wbsy:
+		xor     cx, cx
+atainit_wbsy_loop:
 		in      al, dx
 		test    al, 80h         ; BSY
 		jz      short atainit_bsyok
-		loop    short atainit_wbsy
+		loop    short atainit_wbsy_loop
+		dec     bx
+		jnz     short atainit_wbsy
+		pop     bx
 		jmp     short atainit_none
 
 atainit_bsyok:
+		pop     bx
 		test    al, 40h         ; DRDY
 		jz      short atainit_none
 
@@ -4446,20 +4461,28 @@ atainit_bsyok:
 		out     dx, al
 
 		mov     dx, ATA_STATUS
-		mov     cx, 0ffffh
+		push    bx
+		mov     bx, 50
 atainit_wdrq:
+		xor     cx, cx
+atainit_wdrq_loop:
 		in      al, dx
 		test    al, 80h         ; BSY
 		jnz     short atainit_wdrq_next
 		test    al, 08h         ; DRQ
 		jnz     short atainit_drqok
 		test    al, 01h         ; ERR
-		jnz     short atainit_none
+		jnz     short atainit_wdrq_err
 atainit_wdrq_next:
-		loop    short atainit_wdrq
+		loop    short atainit_wdrq_loop
+		dec     bx
+		jnz     short atainit_wdrq
+atainit_wdrq_err:
+		pop     bx
 		jmp     short atainit_none
 
 atainit_drqok:
+		pop     bx
 		sub     sp, 512
 		mov     di, sp
 		push    ss
@@ -4494,164 +4517,176 @@ atainit_none:
 atainit endp
 
 ataread proc near
+		push    bp
+		mov     bp, sp
+		sub     sp, 6           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors
 		push    bx
 		push    cx
 		push    dx
 		push    si
 		push    di
-		push    bp
 
-		mov     bp, cx          ; total sectors requested
+		mov     [bp-2], dx      ; LBA bits 16-31
+		mov     [bp-4], ax      ; LBA bits 0-15
+		mov     [bp-6], cx      ; total sectors requested
 		mov     di, bx          ; ES:DI = buffer pointer
+		cld
 
 ataread_loop:
 		test    cx, cx
 		jz      ataread_done
 
-		push    dx
+		; 1. Wait for BSY to clear
 		mov     dx, ATA_STATUS
-		mov     si, 0
+		mov     bx, 50
 ataread_wbsy:
+		xor     si, si
+ataread_wbsy_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jz      short ataread_bsyok
 		dec     si
+		jnz     short ataread_wbsy_loop
+		dec     bx
 		jnz     short ataread_wbsy
-		pop     dx
-		jmp     ataread_err
+		jmp     short ataread_err
 
 ataread_bsyok:
-		pop     dx
-		; Send LBA and count
-		push    ax
-		push    dx
-		mov     al, dh
+		; 2. Send ATA parameters
+		; ATA_DRVHEAD: 0xE0 | (LBA[27:24] & 0x0F)
+		mov     al, byte ptr [bp-1] ; LBA bits 24-31
 		and     al, 0fh
-		or      al, 0e0h        ; LBA mode, Master
+		or      al, 0e0h        ; LBA mode, Master (dev 0)
 		mov     dx, ATA_DRVHEAD
 		out     dx, al
 
+		; ATA_SECCNT: 1 sector
 		mov     dx, ATA_SECCNT
 		mov     al, 1
 		out     dx, al
 
-		pop     dx
-		pop     ax
-		push    ax
-		push    dx
+		; ATA_SECNUM: LBA 0-7
+		mov     al, byte ptr [bp-4]
 		mov     dx, ATA_SECNUM
-		out     dx, al          ; LBA 0-7
-
-		mov     dx, ATA_CYLLO
-		mov     al, ah
-		out     dx, al          ; LBA 8-15
-
-		pop     dx
-		mov     dx, ATA_CYLHI
-		mov     al, dl
-		out     dx, al          ; LBA 16-23
-		pop     ax
-
-		push    dx
-		mov     dx, ATA_COMMAND
-		mov     al, 20h         ; READ SECTORS
 		out     dx, al
 
+		; ATA_CYLLO: LBA 8-15
+		mov     al, byte ptr [bp-3]
+		mov     dx, ATA_CYLLO
+		out     dx, al
+
+		; ATA_CYLHI: LBA 16-23
+		mov     al, byte ptr [bp-2]
+		mov     dx, ATA_CYLHI
+		out     dx, al
+
+		; ATA_COMMAND: 20h (READ SECTORS)
+		mov     dx, ATA_COMMAND
+		mov     al, 20h
+		out     dx, al
+
+		; 3. Wait for DRQ or ERR
 		mov     dx, ATA_STATUS
-		mov     si, 0
+		mov     bx, 100
 ataread_wdrq:
+		xor     si, si
+ataread_wdrq_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jnz     short ataread_wdrq_next
 		test    al, 01h         ; ERR
-		jnz     short ataread_rerr
+		jnz     short ataread_err
 		test    al, 08h         ; DRQ
 		jnz     short ataread_drqok
 ataread_wdrq_next:
 		dec     si
+		jnz     short ataread_wdrq_loop
+		dec     bx
 		jnz     short ataread_wdrq
-ataread_rerr:
-		pop     dx
-		jmp     ataread_err
+		jmp     short ataread_err
 
 ataread_drqok:
-		pop     dx
-		; Normalize ES:DI
-		push    ax
+		; 4. Normalize ES:DI to avoid segment overflow
 		mov     ax, di
 		shr     ax, 4
 		mov     si, es
 		add     ax, si
 		mov     es, ax
 		and     di, 15
-		pop     ax
 
+		; 5. Read 256 16-bit words
 		push    cx
-		push    dx
 		mov     dx, ATA_DATA
 		mov     cx, 256
 		rep     insw
-		pop     dx
 		pop     cx
 
-		add     ax, 1
-		adc     dx, 0
+		; 6. Increment LBA and decrement sector count
+		add     word ptr [bp-4], 1
+		adc     word ptr [bp-2], 0
 		dec     cx
 		jmp     ataread_loop
 
 ataread_err:
-		sub     bp, cx
-		mov     ax, bp
+		mov     ax, [bp-6]
+		sub     ax, cx
 		jmp     short ataread_exit
 
 ataread_done:
-		mov     ax, bp
+		mov     ax, [bp-6]
 
 ataread_exit:
-		pop     bp
 		pop     di
 		pop     si
 		pop     dx
 		pop     cx
 		pop     bx
+		mov     sp, bp
+		pop     bp
 		ret
 ataread endp
 
 atawrite proc near
+		push    bp
+		mov     bp, sp
+		sub     sp, 6           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors
 		push    bx
 		push    cx
 		push    dx
 		push    si
 		push    di
-		push    bp
 		push    ds
 
-		mov     bp, cx
+		mov     [bp-2], dx      ; LBA bits 16-31
+		mov     [bp-4], ax      ; LBA bits 0-15
+		mov     [bp-6], cx      ; total sectors requested
 		mov     si, bx
 		push    es
 		pop     ds              ; DS:SI = source buffer
+		cld
 
 atawrite_loop:
 		test    cx, cx
 		jz      atawrite_done
 
-		push    dx
+		; 1. Wait for BSY to clear
 		mov     dx, ATA_STATUS
-		mov     di, 0
+		mov     bx, 50
 atawrite_wbsy1:
+		xor     di, di
+atawrite_wbsy1_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jz      short atawrite_bsy1ok
 		dec     di
+		jnz     short atawrite_wbsy1_loop
+		dec     bx
 		jnz     short atawrite_wbsy1
-		pop     dx
 		jmp     atawrite_err
 
 atawrite_bsy1ok:
-		pop     dx
-		push    ax
-		push    dx
-		mov     al, dh
+		; 2. Send ATA parameters
+		mov     al, byte ptr [bp-1] ; LBA high byte (bits 24-31)
 		and     al, 0fh
 		or      al, 0e0h        ; LBA mode, Master
 		mov     dx, ATA_DRVHEAD
@@ -4661,137 +4696,140 @@ atawrite_bsy1ok:
 		mov     al, 1
 		out     dx, al
 
-		pop     dx
-		pop     ax
-		push    ax
-		push    dx
+		mov     al, byte ptr [bp-4] ; LBA 0-7
 		mov     dx, ATA_SECNUM
-		out     dx, al          ; LBA 0-7
+		out     dx, al
 
+		mov     al, byte ptr [bp-3] ; LBA 8-15
 		mov     dx, ATA_CYLLO
-		mov     al, ah
-		out     dx, al          ; LBA 8-15
+		out     dx, al
 
-		pop     dx
+		mov     al, byte ptr [bp-2] ; LBA 16-23
 		mov     dx, ATA_CYLHI
-		mov     al, dl
-		out     dx, al          ; LBA 16-23
-		pop     ax
+		out     dx, al
 
-		push    dx
 		mov     dx, ATA_COMMAND
 		mov     al, 30h         ; WRITE SECTORS
 		out     dx, al
 
+		; 3. Wait for DRQ
 		mov     dx, ATA_STATUS
-		mov     di, 0
+		mov     bx, 100
 atawrite_wdrq:
+		xor     di, di
+atawrite_wdrq_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jnz     short atawrite_wdrq_next
 		test    al, 01h         ; ERR
-		jnz     short atawrite_werr
+		jnz     short atawrite_err
 		test    al, 08h         ; DRQ
 		jnz     short atawrite_drqok
 atawrite_wdrq_next:
 		dec     di
+		jnz     short atawrite_wdrq_loop
+		dec     bx
 		jnz     short atawrite_wdrq
-atawrite_werr:
-		pop     dx
-		jmp     atawrite_err
+		jmp     short atawrite_err
 
 atawrite_drqok:
-		pop     dx
-		; Normalize DS:SI
-		push    ax
+		; 4. Normalize DS:SI
 		mov     ax, si
 		shr     ax, 4
 		mov     di, ds
 		add     ax, di
 		mov     ds, ax
 		and     si, 15
-		pop     ax
 
+		; 5. Write 256 words
 		push    cx
-		push    dx
 		mov     dx, ATA_DATA
 		mov     cx, 256
 		rep     outsw
-		pop     dx
 		pop     cx
 
-		push    dx
+		; 6. Wait for write completion (BSY to clear) and check error
 		mov     dx, ATA_STATUS
-		mov     di, 0
+		mov     bx, 100
 atawrite_wbsy2:
+		xor     di, di
+atawrite_wbsy2_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jz      short atawrite_bsy2ok
 		dec     di
+		jnz     short atawrite_wbsy2_loop
+		dec     bx
 		jnz     short atawrite_wbsy2
-		pop     dx
-		jmp     atawrite_err
+		jmp     short atawrite_err
 
 atawrite_bsy2ok:
 		test    al, 01h         ; ERR
-		jnz     short atawrite_werr
-		pop     dx
+		jnz     short atawrite_err
 
-		add     ax, 1
-		adc     dx, 0
+		; 7. Increment LBA and decrement sector count
+		add     word ptr [bp-4], 1
+		adc     word ptr [bp-2], 0
 		dec     cx
 		jmp     atawrite_loop
 
 atawrite_err:
-		sub     bp, cx
-		mov     ax, bp
+		mov     ax, [bp-6]
+		sub     ax, cx
 		jmp     short atawrite_exit
 
 atawrite_done:
-		mov     ax, bp
+		mov     ax, [bp-6]
 
 atawrite_exit:
 		pop     ds
-		pop     bp
 		pop     di
 		pop     si
 		pop     dx
 		pop     cx
 		pop     bx
+		mov     sp, bp
+		pop     bp
 		ret
 atawrite endp
 
 ataverify proc near
+		push    bp
+		mov     bp, sp
+		sub     sp, 6           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors
 		push    bx
 		push    cx
 		push    dx
-		push    bp
+		push    si
 
-		mov     bp, cx
+		mov     [bp-2], dx      ; LBA bits 16-31
+		mov     [bp-4], ax      ; LBA bits 0-15
+		mov     [bp-6], cx      ; total sectors requested
 
 ataverify_loop:
 		test    cx, cx
 		jz      ataverify_done
 
-		push    dx
+		; 1. Wait for BSY to clear
 		mov     dx, ATA_STATUS
-		mov     bx, 0
+		mov     bx, 50
 ataverify_wbsy:
+		xor     si, si
+ataverify_wbsy_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jz      short ataverify_bsyok
+		dec     si
+		jnz     short ataverify_wbsy_loop
 		dec     bx
 		jnz     short ataverify_wbsy
-		pop     dx
 		jmp     ataverify_err
 
 ataverify_bsyok:
-		pop     dx
-		push    ax
-		push    dx
-		mov     al, dh
+		; 2. Send ATA parameters
+		mov     al, byte ptr [bp-1] ; LBA high byte
 		and     al, 0fh
-		or      al, 0e0h
+		or      al, 0e0h        ; LBA mode, Master
 		mov     dx, ATA_DRVHEAD
 		out     dx, al
 
@@ -4799,64 +4837,62 @@ ataverify_bsyok:
 		mov     al, 1
 		out     dx, al
 
-		pop     dx
-		pop     ax
-		push    ax
-		push    dx
+		mov     al, byte ptr [bp-4] ; LBA 0-7
 		mov     dx, ATA_SECNUM
 		out     dx, al
 
+		mov     al, byte ptr [bp-3] ; LBA 8-15
 		mov     dx, ATA_CYLLO
-		mov     al, ah
 		out     dx, al
 
-		pop     dx
+		mov     al, byte ptr [bp-2] ; LBA 16-23
 		mov     dx, ATA_CYLHI
-		mov     al, dl
 		out     dx, al
-		pop     ax
 
-		push    dx
 		mov     dx, ATA_COMMAND
 		mov     al, 40h         ; READ VERIFY SECTORS
 		out     dx, al
 
+		; 3. Wait for command completion (BSY to clear)
 		mov     dx, ATA_STATUS
-		mov     bx, 0
+		mov     bx, 100
 ataverify_wdone:
+		xor     si, si
+ataverify_wdone_loop:
 		in      al, dx
-		test    al, 80h
+		test    al, 80h         ; BSY
 		jz      short ataverify_doneok
+		dec     si
+		jnz     short ataverify_wdone_loop
 		dec     bx
 		jnz     short ataverify_wdone
-		pop     dx
-		jmp     ataverify_err
+		jmp     short ataverify_err
 
 ataverify_doneok:
 		test    al, 01h         ; ERR
-		jnz     short ataverify_verr
-		pop     dx
+		jnz     short ataverify_err
 
-		add     ax, 1
-		adc     dx, 0
+		; 4. Increment LBA and decrement sector count
+		add     word ptr [bp-4], 1
+		adc     word ptr [bp-2], 0
 		dec     cx
 		jmp     ataverify_loop
 
-ataverify_verr:
-		pop     dx
 ataverify_err:
-		sub     bp, cx
-		mov     ax, bp
+		mov     ax, [bp-6]
+		sub     ax, cx
 		jmp     short ataverify_exit
 
 ataverify_done:
-		mov     ax, bp
+		mov     ax, [bp-6]
 
 ataverify_exit:
-		pop     bp
+		pop     si
 		pop     dx
 		pop     cx
 		pop     bx
+		mov     sp, bp
+		pop     bp
 		ret
 ataverify endp
 

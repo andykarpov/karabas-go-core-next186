@@ -19,6 +19,7 @@
         {"type": "S", "name": "Joy swap", "options": ["Off", "On"], "default": 0, "hotkey": "Menu+F4"},
         {"type": "S", "name": "MIDI", "options": ["Off", "On"], "default": 1, "hotkey": "Menu+F5"},
         {"type": "S", "name": "Adlib", "options": ["On", "Hidden"], "default": 0, "hotkey": "Menu+F6"},
+        {"type": "S", "name": "HDD0 Mode", "options": ["Auto", "Image", "SD2 card"], "default": 0},
         {"type": "F", "name": "HDD0", "slot": 0, "extensions": ".img .vhd .bin .raw", "hotkey": "Menu+F7"},
         {"type": "F", "name": "HDD1", "slot": 1, "extensions": ".img .vhd .bin .raw", "hotkey": "Menu+F8"},
         {"type": "T", "name": "NMI", "options": null, "default": 0, "hotkey": "Menu+F12"},

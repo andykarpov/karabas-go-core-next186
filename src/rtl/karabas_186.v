@@ -152,7 +152,7 @@ system sys_inst(
     .MPU_RX(mpu_Rx),
     .MPU_TX(mpu_Tx),
 
-    .SD_n_CS(sd_cs_n),
+    .SD_n_CS(core_sd_cs_n),
     .SD_DI(sd_di),
     .SD_CK(sd_clk),
     .SD_DO(sd_do),
@@ -435,6 +435,10 @@ wire [31:0] hdf_sector;
 wire [7:0] hdf_byte_out_data;
 wire hdf_own = (sdc_slot < 3'd2);
 
+wire hdd0_dev0_en = (kb_hdd0_mode != 2'd2);
+wire core_sd_cs_n;
+assign sd_cs_n = (kb_hdd0_mode == 2'd1) ? 1'b1 : core_sd_cs_n;
+
 hdf_ata #(
     .DEF_HEADS(5'd16),
     .DEF_SPT(8'd63),
@@ -443,7 +447,7 @@ hdf_ata #(
     .clk(clk_bus),
     .reset(areset),
     .ata_reset(reset),
-    .dev0_en(sdc_img_mounted[0]),
+    .dev0_en(hdd0_dev0_en),
     .dev(),
     .dev1_here(),
 
@@ -488,11 +492,12 @@ kg_sync #(.W(1)) u_sync_dvi(
 wire kb_reset, kb_nmi, kb_fake286, kb_joyswap, kb_midi, kb_adlibhide;
 wire [2:0] kb_speed;
 wire [1:0] kb_isawait;
+wire [1:0] kb_hdd0_mode;
 
-wire [63:0] softsw_regs;
+wire [71:0] softsw_regs;
 kg_soft_switches #(
-    .N(8),
-    .INIT(64'h0000_0001_0001_0000)
+    .N(9),
+    .INIT(72'h00_0000_0001_0001_0000)
 ) u_softsw(
     .clk(clk_bus),
     .command(softsw_command),
@@ -506,8 +511,9 @@ assign kb_fake286   = softsw_regs[2*8];
 assign kb_joyswap   = softsw_regs[3*8];
 assign kb_midi      = softsw_regs[4*8];
 assign kb_adlibhide = softsw_regs[5*8];
-assign kb_nmi       = softsw_regs[6*8];
-assign kb_reset     = softsw_regs[7*8];
+assign kb_hdd0_mode = softsw_regs[6*8 +: 2];
+assign kb_nmi       = softsw_regs[7*8];
+assign kb_reset     = softsw_regs[8*8];
 
 // --------- BIOS ROM loader ------------
 
