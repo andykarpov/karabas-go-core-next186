@@ -114,7 +114,7 @@ module dcm
     .CLKOUT2_DIVIDE         (8),
     .CLKOUT2_PHASE          (0.000),
     .CLKOUT2_DUTY_CYCLE     (0.500),
-    .CLKOUT3_DIVIDE         (8),
+    .CLKOUT3_DIVIDE         (10),
     .CLKOUT3_PHASE          (0.000),
     .CLKOUT3_DUTY_CYCLE     (0.500),
     .CLKOUT4_DIVIDE         (16),

@@ -2,7 +2,7 @@
 `default_nettype none
 
 module karabas_186 #(
-    parameter BURST_MAX_MHZ = 0 // see mcu.vhd
+    parameter BURST_MAX_MHZ = 0 // see kg_mcu
 )(
     input  wire         clk,
 
@@ -66,7 +66,7 @@ dcm dcm_system (
     .CLK_OUT1(clk_sdr_out), // 100 @ 180
     .CLK_OUT2(clk_sdr),     // 100
     .CLK_OUT3(clk_cpu),     // 50
-    .CLK_OUT4(clk_dsp),     // 50
+    .CLK_OUT4(clk_dsp),     // 40
 	 .CLK_OUT5(clk_25),      // 25
     .LOCKED(locked)
 );
@@ -80,7 +80,7 @@ dcm_dsp dcm_dsp (
 assign areset = ~locked;
 assign clk_bus = clk_cpu;
 assign clk_vga = clk_25;
-assign clk_adc = clk_25;
+assign clk_adc = clk_12; // PCM1808: SCKI 12 MHz = 256 fs, fs 46.9 kHz (25 MHz gave 97.7 kHz, over its 96 kHz)
 assign clk_midi = clk_12;
 assign clk_mpu = clk_3; // from clk_12 div 4
 
@@ -97,12 +97,39 @@ wire ps2_command_wr;
 wire [15:0] cdda_l;
 wire [15:0] cdda_r;
 wire [5:0] core_r, core_g, core_b;
-wire core_hs, core_vs, core_blank, core_vga_reset, core_vb;
+wire core_hs, core_vs, core_blank, core_vga_reset, core_vb, core_vb_frame, core_hb, core_hs_d, core_vs_d;
 wire [15:0] ide_dat_o, ide_dat_i;
 wire [3:0] ide_a;
 wire [1:0] ide_cs;
 wire ide_we;
-reg [1:0] ide_int;
+wire [1:0] ide_int;
+wire cpu_reset;
+// soundwave gives the mix as unsigned (+32768, for the PWM); the I2S DAC and HDMI take signed samples
+wire [15:0] sys_laudio, sys_raudio;
+assign audio_l = sys_laudio ^ 16'h8000;
+assign audio_r = sys_raudio ^ 16'h8000;
+
+// the ADC samples (clk_12) into clk_cpu: a word is taken when it is the same on two clocks
+reg [15:0] adc_l1, adc_l2, adc_ls_l, adc_r1, adc_r2, adc_ls_r;
+always @(posedge clk_cpu) begin
+    adc_l1 <= adc_l[23:8];
+    adc_l2 <= adc_l1;
+    if (adc_l1 == adc_l2) adc_ls_l <= adc_l2;
+    adc_r1 <= adc_r[23:8];
+    adc_r2 <= adc_r1;
+    if (adc_r1 == adc_r2) adc_ls_r <= adc_r2;
+end
+
+// level meters of the mcu (dot matrix): 2^20 clocks at 50 MHz = 21 ms
+wire [23:0] matrix_cmd;
+wire matrix_cmd_wr;
+audio_peaks #(.PERIOD_BITS(20)) audio_peaks(
+    .clk(clk_bus),
+    .audio_l(audio_l),
+    .audio_r(audio_r),
+    .cmd_wr(matrix_cmd_wr),
+    .cmd(matrix_cmd)
+);
 
 system sys_inst(
     .clk_25(clk_25),
@@ -129,6 +156,10 @@ system sys_inst(
     .VGA_VSYNC(core_vs),
     .VGA_BLANK(core_blank),
     .VGA_VBLANK(core_vb),
+    .VGA_VBLANK_FRAME(core_vb_frame),
+    .VGA_HBLANK(core_hb),
+    .VGA_HSYNC_D(core_hs_d),
+    .VGA_VSYNC_D(core_vs_d),
 	 .VGA_RESET(core_vga_reset),
     .frame_on(),
 
@@ -141,16 +172,17 @@ system sys_inst(
     .LED(),
 
     .BTN_RESET(reset),
+    .CPU_RESET(cpu_reset),
     .BTN_NMI(NMI),
 
-    .RS232_DCE_RXD(),
+    .RS232_DCE_RXD(1'b1),
     .RS232_DCE_TXD(),
     .RS232_EXT_RXD(com1_Rx),
     .RS232_EXT_TXD(com1_Tx),
     .MPU_RX(mpu_Rx),
     .MPU_TX(mpu_Tx),
 
-    .SD_n_CS(sd_cs_n),
+    .SD_n_CS(core_sd_cs_n),
     .SD_DI(sd_di),
     .SD_CK(sd_clk),
     .SD_DO(sd_do),
@@ -160,10 +192,10 @@ system sys_inst(
 
     .AUD_L(pwm_audio_l),
     .AUD_R(pwm_audio_r),
-    .LAUDIO(audio_l),
-    .RAUDIO(audio_r),
+    .LAUDIO(sys_laudio),
+    .RAUDIO(sys_raudio),
 
-    .RS232_HOST_RXD(),
+    .RS232_HOST_RXD(1'b1),
     .RS232_HOST_TXD(),
     .RS232_HOST_RST(),
 
@@ -200,8 +232,8 @@ system sys_inst(
     .ms_b(ms_b),
     .ms_upd(ms_upd),
 
-    .adc_l(adc_l),
-    .adc_r(adc_r)
+    .adc_l({ adc_ls_l, 8'd0 }),
+    .adc_r({ adc_ls_r, 8'd0 })
 );
 
 //---------- MCU ------------
@@ -222,7 +254,27 @@ wire [31:0] romload_a;
 wire [7:0] romload_d;
 wire romload_active, romload_wr;
 
-mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
+wire [1:0] mcu_btns;
+wire mcu_dvi_only;
+
+kg_mcu #(
+    .BURST_MAX_MHZ(BURST_MAX_MHZ),
+    .CS_FILTER(3),
+    .ENABLE_RTC(0),
+    .ENABLE_UART(0),
+    .ENABLE_MATRIX(1),
+    .ENABLE_DEBUG(0),
+    .ENABLE_IMG(1),
+    .ENABLE_FILE(1),
+    .FILE_CMDS(0),
+    .FILE_WR_EACH(1),
+    .FILE_TO_ROM(1),
+    .ENABLE_FT(0),
+    .ENABLE_SD2(0),
+    .ENABLE_ESP(0),
+    .ENABLE_PS2_CMD(1),
+    .ENABLE_FLASHBOOT(0)
+) mcu(
     .CLK(clk_bus),
     .N_RESET(~areset),
     
@@ -230,6 +282,8 @@ mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
     .MCU_MISO(mcu_miso),
     .MCU_SCK(mcu_sck),
     .MCU_SS(mcu_cs_n),
+    .MCU_SPI_FT_SS(1'b1),
+    .MCU_SPI_SD2_SS(1'b1),
     .MCU_BURST_CS_N(mcu_burst_cs_n),
     .MCU_BURST_READY(mcu_burst_ready),
     
@@ -239,31 +293,228 @@ mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
     .MS_B(ms_b),
     .MS_UPD(ms_upd),
     
+    .KB_STATUS(),
+    .KB_DAT0(), .KB_DAT1(), .KB_DAT2(), .KB_DAT3(), .KB_DAT4(), .KB_DAT5(),
     .KB_SCANCODE(ps2_scancode),
     .KB_SCANCODE_UPD(ps2_scancode_upd),
     .XT_SCANCODE(xt_scancode),
     .XT_SCANCODE_UPD(xt_scancode_upd),
     .PS2_COMMAND(ps2_command),
-    .PS2_COMMAND_WR(ps2_command_wr),  
+    .PS2_COMMAND_WR(ps2_command_wr),
     
     .JOY_L(joy_l),
     .JOY_R(joy_r),
+    .BTNS(mcu_btns),
     
+    .RTC_A(8'h0),
+    .RTC_DI(8'h0),
+    .RTC_DO(),
+    .RTC_CS(1'b0),
+    .RTC_WR_N(1'b1),
+    
+    .UART_RX_DATA(),
+    .UART_RX_IDX(),
+    .UART_TX_DATA(8'h0),
+    .UART_TX_WR(1'b0),
+    .UART_TX_MODE(1'b0),
+    .UART_DLM(8'h0),
+    .UART_DLL(8'h0),
+    .UART_DLM_WR(1'b0),
+    .UART_DLL_WR(1'b0),
+    
+    .MATRIX_CMD(matrix_cmd),
+    .MATRIX_CMD_WR(matrix_cmd_wr),
+    
+    .DEBUG_ADDR(16'h0),
+    .DEBUG_DATA(16'h0),
+    
+    // rom loader
     .ROMLOADER_ACTIVE(romload_active),
     .ROMLOAD_ADDR(romload_a),
     .ROMLOAD_DATA(romload_d),
     .ROMLOAD_WR(romload_wr),
+    .IOCTL_ACTIVE(),
     
+    // file loader (unused)
+    .FILELOAD_RESET(),
+    .FILELOAD_ACTIVE(),
+    .FILELOAD_SIZE(),
+    .FILELOAD_ADDR(),
+    .FILELOAD_DATA(),
+    .FILELOAD_WR(),
+    
+    // ft812
+    .FT_SPI_ON(),
+    .FT_VGA_ON(),
+    .FT_RESET(),
+    .FT_SCK(),
+    .FT_MOSI(),
+    .FT_MISO(1'b0),
+    .FT_CS_N(),
+    
+    // sd2
+    .SD2_SCK(),
+    .SD2_MOSI(),
+    .SD2_MISO(1'b0),
+    .SD2_CS_N(),
+    
+    // hw setup
     .HWID(hwid),
-    .DVI_ONLY(dvi_only),
+    .DVI_ONLY(mcu_dvi_only),
     
+    // soft switches, osd
     .SOFTSW_COMMAND(softsw_command),    
     .OSD_COMMAND(osd_command),
-	 
-	 .DEBUG_ADDR(16'h0000),
-	 .DEBUG_DATA(16'h0000),
+    
+    // file mounter
+    .IMG_MOUNTED(img_mounted),
+    .IMG_SIZE(img_size),
+    .IMG_DATA_WR(img_data_wr),
+    .IMG_DATA_ADDR(img_data_addr),
+    .IMG_DATA(img_data),
+    .IMG_RESULT_WR(img_result_wr),
+    .IMG_RESULT(img_result),
+    .IMG_SUM(img_sum),
+    .IMG_Q_WR(img_q_wr),
+    .IMG_Q_DI(img_q_di),
+    .IMG_Q_ACK(img_q_ack),
+    .IMG_PHYS_WR(),
+    .IMG_PHYS(),
+    .IMG_FLUSH(),
+    
+    // esp
+    .ESP_UART_TX_DATA(),
+    .ESP_UART_TX_WR(),
+    .ESP_UART_RX_DATA(8'h0),
+    .ESP_UART_RX_WR(1'b0),
+    .ESP_UART_RX_ACK(),
+    
+    // flashboot
+    .FLASHBOOT_START(1'b0),
+    .FLASHBOOT_COREID(5'd0),
     
     .BUSY(mcu_busy)
+);
+
+// --------- File mounter & ATA Hard Disk ------------
+
+wire [7:0] img_mounted;
+wire [63:0] img_size;
+wire img_data_wr;
+wire [8:0] img_data_addr;
+wire [7:0] img_data;
+wire img_result_wr;
+wire [7:0] img_result;
+wire [15:0] img_sum;
+wire img_q_wr;
+wire [23:0] img_q_di;
+wire img_q_ack;
+
+wire [7:0] sdc_img_mounted;
+wire [63:0] sdc_img_size;
+wire [7:0] sdc_rd;
+wire [7:0] sdc_wr;
+wire [31:0] sdc_sector;
+wire sdc_busy, sdc_done, sdc_error;
+wire [2:0] sdc_slot;
+wire sdc_byte_in_strobe;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_byte_in_data;
+wire [7:0] sdc_byte_out_data;
+wire sdc_active;
+
+img_sdc #(
+    .OUT_LATENCY(3),
+    .TIMEOUT(24'd10000000), // ~200ms at 50MHz
+    .RETRIES(2'd3)
+) u_img_sdc(
+    .clk(clk_bus),
+    .reset(areset),
+
+    .img_mounted(img_mounted),
+    .img_size(img_size),
+    .img_data_wr(img_data_wr),
+    .img_data_addr(img_data_addr),
+    .img_data(img_data),
+    .img_result_wr(img_result_wr),
+    .img_result(img_result),
+    .img_sum(img_sum),
+    .img_q_wr(img_q_wr),
+    .img_q_di(img_q_di),
+    .img_q_ack(img_q_ack),
+
+    .sdc_img_mounted(sdc_img_mounted),
+    .sdc_img_size(sdc_img_size),
+    .sdc_rd(sdc_rd),
+    .sdc_wr(sdc_wr),
+    .sdc_sector(sdc_sector),
+    .sdc_busy(sdc_busy),
+    .sdc_done(sdc_done),
+    .sdc_error(sdc_error),
+    .sdc_slot(sdc_slot),
+    .sdc_byte_in_strobe(sdc_byte_in_strobe),
+    .sdc_byte_addr(sdc_byte_addr),
+    .sdc_byte_in_data(sdc_byte_in_data),
+    .sdc_byte_out_data(sdc_byte_out_data),
+    .active(sdc_active)
+);
+
+wire [15:0] hdf_dout;
+wire [1:0] hdf_rd, hdf_wr;
+wire [31:0] hdf_sector;
+wire [7:0] hdf_byte_out_data;
+wire hdf_own = (sdc_slot < 3'd2);
+
+wire hdd0_dev0_en = (kb_hdd0_mode != 2'd2);
+wire core_sd_cs_n;
+assign sd_cs_n = (kb_hdd0_mode == 2'd1) ? 1'b1 : core_sd_cs_n;
+
+hdf_ata #(
+    .DEF_HEADS(5'd16),
+    .DEF_SPT(8'd63),
+    .SYNC_BUS(1)
+) u_hdf_ata(
+    .clk(clk_bus),
+    .reset(areset),
+    .ata_reset(cpu_reset), // the CPU reset: reset, and the 8042 reset (Ctrl+Alt+Del of DOS)
+    .dev0_en(hdd0_dev0_en),
+    .dev(),
+    .dev1_here(),
+
+    .a(ide_a[2:0]),
+    .cs_n({ ~(ide_cs[0] & ide_a[3]), ~(ide_cs[0] & ~ide_a[3]) }),
+    .rd_n(~(ide_cs[0] & ~ide_we)),
+    .wr_n(~(ide_cs[0] & ide_we)),
+    .din(ide_dat_o),
+    .dout(hdf_dout),
+
+    .img_mounted(sdc_img_mounted[1:0]),
+    .img_size(sdc_img_size),
+    .sdc_rd(hdf_rd),
+    .sdc_wr(hdf_wr),
+    .sdc_sector(hdf_sector),
+    .sdc_busy(sdc_busy & hdf_own),
+    .sdc_done(sdc_done & hdf_own),
+    .sdc_error(sdc_error),
+    .sdc_byte_in_strobe(sdc_byte_in_strobe & hdf_own),
+    .sdc_byte_addr(sdc_byte_addr),
+    .sdc_byte_in_data(sdc_byte_in_data),
+    .sdc_byte_out_data(hdf_byte_out_data),
+    .led()
+);
+
+assign sdc_rd = { 6'b000000, hdf_rd };
+assign sdc_wr = { 6'b000000, hdf_wr };
+assign sdc_sector = hdf_sector;
+assign sdc_byte_out_data = hdf_byte_out_data;
+
+assign ide_dat_i = hdf_dout;
+assign ide_int = 2'b00;
+
+kg_sync #(.W(1)) u_sync_dvi(
+    .clk(clk_vga),
+    .d(mcu_dvi_only),
+    .q(dvi_only)
 );
 
 //---------- Soft switches ------------
@@ -271,19 +522,29 @@ mcu #(.BURST_MAX_MHZ(BURST_MAX_MHZ)) mcu(
 wire kb_reset, kb_nmi, kb_fake286, kb_joyswap, kb_midi, kb_adlibhide;
 wire [2:0] kb_speed;
 wire [1:0] kb_isawait;
+wire [1:0] kb_hdd0_mode;
 
-soft_switches soft_switches(
-    .CLK(clk_bus),
-    .SOFTSW_COMMAND(softsw_command),
-    .SPEED(kb_speed),
-    .ISAWAIT(kb_isawait),
-    .FAKE286(kb_fake286),
-    .JOYSWAP(kb_joyswap),
-    .MIDI(kb_midi),
-    .ADLIBHIDE(kb_adlibhide),
-    .NMI(kb_nmi),
-    .RESET(kb_reset)
+// register n = OSD item n of core*.json; the file items (HDD0 7, HDD1 8) have no register value
+wire [87:0] softsw_regs;
+kg_soft_switches #(
+    .N(11),
+    .INIT(88'h00_0000_0000_0001_0001_0000)
+) u_softsw(
+    .clk(clk_bus),
+    .command(softsw_command),
+    .regs(softsw_regs),
+    .upd()
 );
+
+assign kb_speed     = softsw_regs[0*8 +: 3];
+assign kb_isawait   = softsw_regs[1*8 +: 2];
+assign kb_fake286   = softsw_regs[2*8];
+assign kb_joyswap   = softsw_regs[3*8];
+assign kb_midi      = softsw_regs[4*8];
+assign kb_adlibhide = softsw_regs[5*8];
+assign kb_hdd0_mode = softsw_regs[6*8 +: 2];
+assign kb_nmi       = softsw_regs[9*8];
+assign kb_reset     = softsw_regs[10*8];
 
 // --------- BIOS ROM loader ------------
 
@@ -312,7 +573,10 @@ bios_loader bios_loader(
 
 // --------- OSD ------------
 
-overlay overlay(
+overlay #(
+    .H_OFFSET(104),
+    .V_OFFSET(32)
+) overlay(
 	.CLK(clk_vga),
 	.RGB_I({core_r, 2'b00, core_g, 2'b00, core_b, 2'b00}),
 	.RGB_O(vga_rgb),
@@ -321,9 +585,9 @@ overlay overlay(
 	.OSD_COMMAND(osd_command)
 );
 
-assign vga_hs = ~core_hs;
-assign vga_vs = ~core_vs;
-assign vga_blank = core_blank || core_vb;
+assign vga_hs = ~core_hs_d;
+assign vga_vs = ~core_vs_d;
+assign vga_blank = core_hb || core_vb_frame;
 assign vga_reset = core_vga_reset;
 
 // ---------- misc -----------------------
@@ -341,7 +605,7 @@ always @(*) begin
 	endcase
 end
 
-always @(posedge clk_cpu) reset <= kb_reset | !bios_loaded;
+always @(posedge clk_cpu) reset <= kb_reset | !bios_loaded | mcu_btns[1];
 
 reg  NMI;
 integer nmi_cnt = 0;

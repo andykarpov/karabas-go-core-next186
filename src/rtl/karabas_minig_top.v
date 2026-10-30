@@ -147,7 +147,6 @@ assign FLASH_WP_N   = 1'b1;
 assign FLASH_HOLD_N = 1'b1;
 assign FLASH_SCK    = 1'b1;
 assign FLASH_DI     = 1'b1;
-assign FT_CLK_OUT   = 1'b0;
 assign WA           = 3'b000;
 assign WCS_N        = 2'b11;
 assign WRD_N        = 1'b1;
@@ -236,7 +235,10 @@ i2s_transceiver #(.mclk_sclk_ratio(4)) adc(
     .mclk          (clk_adc),
     .sclk          (ADC_BCK),
     .ws            (ADC_LRCK),
+    .sd_tx         (),
     .sd_rx         (ADC_DOUT),
+    .l_data_tx     (24'd0),
+    .r_data_tx     (24'd0),
     .l_data_rx     (adc_l),
     .r_data_rx     (adc_r)
 );
@@ -256,6 +258,16 @@ PCM5102 #(.DAC_CLK_DIV_BITS(2)) PCM5102(
 ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) sdr_oddr2 (
     .Q(SDR_CLK), .C0(clk_sdr_out), .C1(!clk_sdr_out), .CE(1'b1), .D0(1'b1), .D1(1'b0), .R(1'b0), .S(1'b0)
 );
+
+// FT812 clock: 8.33 MHz (clk_bus / 6), as the 8 MHz of tsconf and core-menu; an FT812 without a
+// clock is left in an undefined state (its audio output goes to the ADC)
+reg [1:0] ft_div = 2'd0;
+reg ft_clk = 1'b0;
+always @(posedge clk_bus) begin
+    ft_div <= (ft_div == 2'd2) ? 2'd0 : ft_div + 1'd1;
+    if (ft_div == 2'd2) ft_clk <= ~ft_clk;
+end
+assign FT_CLK_OUT = ft_clk;
 
 // adc clk out
 ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) adc_oddr2 (

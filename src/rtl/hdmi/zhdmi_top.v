@@ -40,19 +40,30 @@ hdmi_pll hdmi_pll (
 	.o_reset(pll_reset)
 );
 
-wire audio_clk;
-
-audio_samplerate #(.SAMPLERATE(SAMPLERATE), .CLKRATE(CLKRATE)) audio_samplerate(
-	.clk(p_clk_int),
-	.reset(reset),
-	.audio_stb(audio_clk)
-);
-
+// audio: a sample strobe every CLKRATE / SAMPLERATE clocks on average (audio_samplerate gave fs / 2,
+// karabas-go-modules docs/PLAN.md), the mix of clk_cpu taken into the pixel clock when it is the
+// same on two clocks
+reg [24:0] audio_acc = 25'd0;
+reg audio_clk = 1'b0;
+reg [15:0] audio_l1, audio_l2, audio_ls_l, audio_r1, audio_r2, audio_ls_r;
 reg signed [23:0] hdmi_audio_l, hdmi_audio_r;
 always @(posedge p_clk_int) begin
+	audio_l1 <= audio_l;
+	audio_l2 <= audio_l1;
+	if (audio_l1 == audio_l2) audio_ls_l <= audio_l2;
+	audio_r1 <= audio_r;
+	audio_r2 <= audio_r1;
+	if (audio_r1 == audio_r2) audio_ls_r <= audio_r2;
+	if (audio_acc + SAMPLERATE >= CLKRATE) begin
+		audio_acc <= audio_acc + SAMPLERATE - CLKRATE;
+		audio_clk <= 1'b1;
+	end else begin
+		audio_acc <= audio_acc + SAMPLERATE;
+		audio_clk <= 1'b0;
+	end
 	if (audio_clk) begin
-		hdmi_audio_l <= $signed(audio_l) * 256;
-		hdmi_audio_r <= $signed(audio_r) * 256;
+		hdmi_audio_l <= { audio_ls_l, 8'h00 };
+		hdmi_audio_r <= { audio_ls_r, 8'h00 };
 	end
 end
 

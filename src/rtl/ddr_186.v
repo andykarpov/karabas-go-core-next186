@@ -180,8 +180,13 @@ module system (
 	output wire VGA_VSYNC,
 	output reg VGA_BLANK,
 	output wire VGA_VBLANK,
+	output reg VGA_VBLANK_FRAME,	// vblnk_frame delayed as VGA_BLANK
+	output reg VGA_HBLANK,	// hblnk delayed as VGA_BLANK (the pixel pipeline)
+	output reg VGA_HSYNC_D,	// VGA_HSYNC and VGA_VSYNC delayed as VGA_BLANK, for HDMI: hsync must not start
+	output reg VGA_VSYNC_D,	// while DE is still on (zhdmi takes the sync polarity and the data islands from it)
 	output wire VGA_RESET,
 	input wire BTN_RESET,	// Reset
+	output wire CPU_RESET,	// the CPU is held in reset (BTN_RESET or the 8042 reset)
 	input wire BTN_NMI,		// NMI
 	output wire [7:0]LED,	// HALT
 	input wire RS232_DCE_RXD,
@@ -351,7 +356,12 @@ module system (
 	reg s_RS232_DCE_RXD;
 	reg s_RS232_HOST_RXD;
 	reg [18:0]rstcount = 0;
+	assign CPU_RESET = !rstcount[18];
 	reg [19:0]s_displ_on = 0; // clk_25 delayed displ_on
+	reg [19:0]s_hblnk = 0;    // clk_25 delayed hblnk, for VGA_HBLANK
+	reg [19:0]s_vbf = 0;      // clk_25 delayed vblnk_frame, for VGA_VBLANK_FRAME
+	reg [19:0]s_hs = 0;       // clk_25 delayed VGA_HSYNC, for VGA_HSYNC_D
+	reg [19:0]s_vs = 0;       // clk_25 delayed VGA_VSYNC, for VGA_VSYNC_D
 	reg [1:0]vga13 = 0;       // 1 for mode 13h
 	reg [1:0]vgatext = 0;     // 1 for text mode
 	reg [1:0]modecomp = 0;    // CGA/Tandy compatibility line addressing mode
@@ -682,9 +692,11 @@ module system (
 		.vcount(vcount),
 		.vsync(VGA_VSYNC),
 		.vblnk(vblnk),
+		.vblnk_frame(vblnk_frame),
 		.char_ln(char_ln),
 		.char_row(char_row)
 	);
+	wire vblnk_frame;
 	assign VGA_VBLANK = vblnk;
 
 	// reset on vmode change
@@ -1237,6 +1249,10 @@ module system (
 	reg vblnkD;
 	always @ (posedge clk_25) begin
 		s_displ_on <= {s_displ_on[18:0], displ_on};
+		s_hblnk <= {s_hblnk[18:0], hblnk};
+		s_vbf <= {s_vbf[18:0], vblnk_frame};
+		s_hs <= {s_hs[18:0], VGA_HSYNC};
+		s_vs <= {s_vs[18:0], VGA_VSYNC};
 		// 32 extra bytes at the end of the scanline, for panning
 		// 16 extra bytes for CGA modes, as one line = 80 bytes, but SDRAM controller reads 3*32 = 96 bytes
 		exline <= vrdon ? ((modecompreq == 2'b01 | (vgatext_s[1] & half_s[1])) ? 4'b1011 : 4'b1111) : (exline - vrden);
@@ -1267,6 +1283,10 @@ module system (
 
 		{VGA_B, VGA_G, VGA_R} <= DAC_COLOR & {18{sdon}};
 		VGA_BLANK <= ~sdon;
+		VGA_HBLANK <= s_hblnk[18+vgatext_s[1]];
+		VGA_VBLANK_FRAME <= s_vbf[18+vgatext_s[1]];
+		VGA_HSYNC_D <= s_hs[18+vgatext_s[1]];
+		VGA_VSYNC_D <= s_vs[18+vgatext_s[1]];
 	end
 	
 endmodule
