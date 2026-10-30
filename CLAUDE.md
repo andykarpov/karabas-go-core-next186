@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The Next186 core (an 80186 PC SoC by Nicolae Dumitrache, opencores.org project next186) for the Karabas Go, Mini and Mini G boards: Xilinx Spartan-6 XC6SLX25-2 FTG256, ISE 14.7 (XST). The README calls it a port of the ZXDOS+ Next186. It has 32 MB SDRAM, USB keyboard and mouse emulated as PS/2 devices (the MCU sends `CMD_PS2_SCANCODE`, the core answers with `PS2_COMMAND`), Adlib (jtopl), Tandy sound (`sn76489`) and the BIOS loaded from the core file. The repo is MIT licensed (LICENSE), the BIOS source keeps its own copyright notice.
 
-The core is on branch `master`. Branch `kg-modules` moves it to `karabas-go-modules` (the submodule `modules/`, its branch `next186-core`, not merged into modules `master` yet) and adds image mounting; it is not merged into `master` yet.
+The core is on branch `master`. It uses `karabas-go-modules` as the submodule `modules/` (its `master`) and mounts HDD images.
 
 ## Layout
 
