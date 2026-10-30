@@ -664,10 +664,17 @@ module PS2MouseInterfaceEmu(
 		  ps2_command_wr <= 0;
 		  
 		  // samplerate counter
-		  if (samplerate > 0) begin
-			  samplerate_pulses <= CPU_FREQ * 1000000 / samplerate;
-			  samplerate_cnt <= samplerate_cnt + 1;
-		  end
+		  // the PS/2 rates as a table: a divider by samplerate is 55 levels of logic (63 ns at 50 MHz)
+		  case (samplerate)
+				10:  samplerate_pulses <= CPU_FREQ * 1000000 / 10;
+				20:  samplerate_pulses <= CPU_FREQ * 1000000 / 20;
+				40:  samplerate_pulses <= CPU_FREQ * 1000000 / 40;
+				60:  samplerate_pulses <= CPU_FREQ * 1000000 / 60;
+				80:  samplerate_pulses <= CPU_FREQ * 1000000 / 80;
+				200: samplerate_pulses <= CPU_FREQ * 1000000 / 200;
+				default: samplerate_pulses <= CPU_FREQ * 1000000 / 100;
+		  endcase
+		  if (samplerate > 0) samplerate_cnt <= samplerate_cnt + 1;
 		  
 		  // reset data_out_ready on read
 		  if (rd && ~prev_rd && data_out_ready) begin

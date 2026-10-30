@@ -251,3 +251,14 @@ TIMESPEC "TS_CLK_HDMI_n" = PERIOD "CLK_HDMI_n" 125 MHz;
 TIMESPEC "TS_CLK_3" = PERIOD "clk_3" 3 MHz;
 TIMESPEC "TS_CLK_14" = PERIOD "clk_14" 14745 kHz;
 TIMESPEC "TS_CLK_MCU" = PERIOD "clk_mcu" 30 MHz;
+
+# The CPU is 2T: its registers change on CPU_CE = CE186 & CE, and the BIU (Next186_BIU_2T_delayread)
+# never gives CE186 two clocks in a row: on the clock after it (state 0) it uses only its own fetch
+# address. So a path from a register of the CPU has two clocks to any register of clk_cpu.
+TIMEGRP "cpu_regs" = FFS("karabas_186/sys_inst/CPUUnit/cpu/*") RAMS("karabas_186/sys_inst/CPUUnit/cpu/*");
+TIMESPEC "TS_CPU_2T" = FROM "cpu_regs" TO "clk_cpu" 40 ns; // two clocks (TS_CLK_CPU * 2 would be 100 MHz: the PERIOD is a frequency)
+
+# Fake 286 is an OSD switch: it goes into the decoder of the CPU and the cache on every clock, but
+# it changes only from the OSD (one instruction may see the change half done)
+INST "karabas_186/fake286_r2" TNM = "fake286";
+TIMESPEC "TS_FAKE286" = FROM "fake286" TIG;

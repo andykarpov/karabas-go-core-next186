@@ -4,6 +4,7 @@
 // karabas_186.v connects them) + img_sdc.v, with a model of the mcu firmware on the IMG_* ports
 // (from tb_hdf.v of the nanomig core).
 // - a mount, IDENTIFY, READ SECTORS of LBA 0 and 63 as the BIOS (ataread) does them;
+// - a CHS read (cylinder 1, the IDENTIFY geometry) and the same sector by LBA: the same data;
 // - the reset of the CPU (ata_reset: reset button, OSD Reset, Ctrl+Alt+Del) after the mount,
 //   then the same reads again: they must reach the mcu and give the data.
 // Ends with "tb_ata: N errors".
@@ -168,18 +169,47 @@ task wait_bsy;
 	end
 endtask
 
-// ataread of one sector: BSY, the task file, READ SECTORS, DRQ or ERR, 256 words
-task ataread(input [31:0] lba, input [255:0] what);
+// the geometry of IDENTIFY (words 3 and 6), for the CHS reads
+integer id_heads = 0, id_spt = 0;
+
+task identify;
+	begin
+		io_wr(3'd6, 8'hE0);
+		io_wr(3'd7, 8'hEC);
+		wait_bsy;
+		for (k = 0; k < 256; k = k + 1) begin
+			io_rd(3'd0);
+			if (k == 3) id_heads = rdata;
+			if (k == 6) id_spt = rdata;
+		end
+	end
+endtask
+
+// ataread of one sector: BSY, the task file (LBA, or CHS of the IDENTIFY geometry), READ SECTORS, DRQ or ERR, 256 words
+task ataread(input [31:0] lba, input chs, input [255:0] what);
 	integer n, i;
 	reg [15:0] w;
 	integer bad;
+	integer c, h, sec;
 	begin
 		wait_bsy;
-		io_wr(3'd6, 8'hE0 | lba[27:24]);
-		io_wr(3'd2, 8'd1);
-		io_wr(3'd3, lba[7:0]);
-		io_wr(3'd4, lba[15:8]);
-		io_wr(3'd5, lba[23:16]);
+		if (chs) begin
+			sec = lba % id_spt + 1;
+			h = (lba / id_spt) % id_heads;
+			c = lba / (id_spt * id_heads);
+			io_wr(3'd6, 8'hA0 | h[3:0]);
+			io_wr(3'd2, 8'd1);
+			io_wr(3'd3, sec[7:0]);
+			io_wr(3'd4, c[7:0]);
+			io_wr(3'd5, c[15:8]);
+		end
+		else begin
+			io_wr(3'd6, 8'hE0 | lba[27:24]);
+			io_wr(3'd2, 8'd1);
+			io_wr(3'd3, lba[7:0]);
+			io_wr(3'd4, lba[15:8]);
+			io_wr(3'd5, lba[23:16]);
+		end
 		io_wr(3'd7, 8'h20);
 		n = 0;
 		io_rd(3'd7);
@@ -210,18 +240,25 @@ initial begin
 
 	// the firmware mounts the image after the BIOS is loaded
 	repeat (1000) @(posedge clk);
+	r0 = mcu_reads;
 	mount(DISK_SECTORS * 512);
+	// the mount reads sector 0 for the geometry without BSY: a command in that time races it
+	wait (mcu_reads != r0);
+	repeat (100) @(posedge clk);
 	wait_bsy;
 
-	io_wr(3'd6, 8'hE0);
-	io_wr(3'd7, 8'hEC); // IDENTIFY
-	wait_bsy;
-	for (k = 0; k < 256; k = k + 1) io_rd(3'd0);
+	identify;
+	$display("geometry: %0d heads, %0d sectors", id_heads, id_spt);
 
 	r0 = mcu_reads;
-	ataread(0, "read lba 0");
-	ataread(63, "read lba 63");
+	ataread(0, 0, "read lba 0");
+	ataread(63, 0, "read lba 63");
 	check("mcu reads", mcu_reads - r0, 2);
+
+	// CHS: cylinder 1 and a head and a sector above 1, the same data as the LBA reads
+	ataread(id_heads * id_spt + 2 * id_spt + 4, 1, "read chs");
+	ataread(id_heads * id_spt + 2 * id_spt + 4, 0, "read the chs sector by lba");
+	check("mcu reads chs", mcu_reads - r0, 4);
 
 	// the CPU reset (OSD Reset, Ctrl+Alt+Del): the CPU is held ~5 ms, then the BIOS starts again
 	ata_reset <= 1'b1;
@@ -229,14 +266,11 @@ initial begin
 	ata_reset <= 1'b0;
 	repeat (100) @(posedge clk);
 
-	io_wr(3'd6, 8'hE0);
-	io_wr(3'd7, 8'hEC);
-	wait_bsy;
-	for (k = 0; k < 256; k = k + 1) io_rd(3'd0);
+	identify;
 
 	r0 = mcu_reads;
-	ataread(0, "read lba 0 after reset");
-	ataread(63, "read lba 63 after reset");
+	ataread(0, 0, "read lba 0 after reset");
+	ataread(63, 0, "read lba 63 after reset");
 	check("mcu reads after reset", mcu_reads - r0, 2);
 
 	$display("tb_ata: %0d errors", errors);
