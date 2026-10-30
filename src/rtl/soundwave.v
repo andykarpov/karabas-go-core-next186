@@ -77,7 +77,7 @@ module soundwave(
 	reg [2:0]write = 3'b000;
 	wire qempty;
 	wire [31:0]sample;
-	wire [31:0]sample1 = qempty ? 32'hc000c000 : sample;
+	wire [31:0]sample1 = qempty ? 32'h00000000 : sample; // silence is 0 (Covox byte 80h)
 	reg [31:0]lval = 0; 
 	reg [31:0]rval = 0;
 	reg [15:0]r_opl3left = 0;
@@ -131,7 +131,7 @@ module soundwave(
 			end else begin
 				lr <= 1'b0;		// left
 				write <= 3'b110;
-				wdata <= {1'b1, data[7:0], 8'b00000001, data[7:0], 7'b0000000};
+				wdata <= {{2{~data[7]}}, data[6:0], 7'b0000000, {2{~data[7]}}, data[6:0], 7'b0000000}; // Covox byte: (data - 80h) * 128, centered on 0
 			end
 		else write <= write - |write;
 	end

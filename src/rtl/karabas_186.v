@@ -80,7 +80,7 @@ dcm_dsp dcm_dsp (
 assign areset = ~locked;
 assign clk_bus = clk_cpu;
 assign clk_vga = clk_25;
-assign clk_adc = clk_25;
+assign clk_adc = clk_12; // PCM1808: SCKI 12 MHz = 256 fs, fs 46.9 kHz (25 MHz gave 97.7 kHz, over its 96 kHz)
 assign clk_midi = clk_12;
 assign clk_mpu = clk_3; // from clk_12 div 4
 
@@ -97,13 +97,39 @@ wire ps2_command_wr;
 wire [15:0] cdda_l;
 wire [15:0] cdda_r;
 wire [5:0] core_r, core_g, core_b;
-wire core_hs, core_vs, core_blank, core_vga_reset, core_vb, core_vb_frame, core_hb;
+wire core_hs, core_vs, core_blank, core_vga_reset, core_vb, core_vb_frame, core_hb, core_hs_d, core_vs_d;
 wire [15:0] ide_dat_o, ide_dat_i;
 wire [3:0] ide_a;
 wire [1:0] ide_cs;
 wire ide_we;
 wire [1:0] ide_int;
 wire cpu_reset;
+// soundwave gives the mix as unsigned (+32768, for the PWM); the I2S DAC and HDMI take signed samples
+wire [15:0] sys_laudio, sys_raudio;
+assign audio_l = sys_laudio ^ 16'h8000;
+assign audio_r = sys_raudio ^ 16'h8000;
+
+// the ADC samples (clk_12) into clk_cpu: a word is taken when it is the same on two clocks
+reg [15:0] adc_l1, adc_l2, adc_ls_l, adc_r1, adc_r2, adc_ls_r;
+always @(posedge clk_cpu) begin
+    adc_l1 <= adc_l[23:8];
+    adc_l2 <= adc_l1;
+    if (adc_l1 == adc_l2) adc_ls_l <= adc_l2;
+    adc_r1 <= adc_r[23:8];
+    adc_r2 <= adc_r1;
+    if (adc_r1 == adc_r2) adc_ls_r <= adc_r2;
+end
+
+// level meters of the mcu (dot matrix): 2^20 clocks at 50 MHz = 21 ms
+wire [23:0] matrix_cmd;
+wire matrix_cmd_wr;
+audio_peaks #(.PERIOD_BITS(20)) audio_peaks(
+    .clk(clk_bus),
+    .audio_l(audio_l),
+    .audio_r(audio_r),
+    .cmd_wr(matrix_cmd_wr),
+    .cmd(matrix_cmd)
+);
 
 system sys_inst(
     .clk_25(clk_25),
@@ -132,6 +158,8 @@ system sys_inst(
     .VGA_VBLANK(core_vb),
     .VGA_VBLANK_FRAME(core_vb_frame),
     .VGA_HBLANK(core_hb),
+    .VGA_HSYNC_D(core_hs_d),
+    .VGA_VSYNC_D(core_vs_d),
 	 .VGA_RESET(core_vga_reset),
     .frame_on(),
 
@@ -164,8 +192,8 @@ system sys_inst(
 
     .AUD_L(pwm_audio_l),
     .AUD_R(pwm_audio_r),
-    .LAUDIO(audio_l),
-    .RAUDIO(audio_r),
+    .LAUDIO(sys_laudio),
+    .RAUDIO(sys_raudio),
 
     .RS232_HOST_RXD(1'b1),
     .RS232_HOST_TXD(),
@@ -204,8 +232,8 @@ system sys_inst(
     .ms_b(ms_b),
     .ms_upd(ms_upd),
 
-    .adc_l(adc_l),
-    .adc_r(adc_r)
+    .adc_l({ adc_ls_l, 8'd0 }),
+    .adc_r({ adc_ls_r, 8'd0 })
 );
 
 //---------- MCU ------------
@@ -234,7 +262,7 @@ kg_mcu #(
     .CS_FILTER(3),
     .ENABLE_RTC(0),
     .ENABLE_UART(0),
-    .ENABLE_MATRIX(0),
+    .ENABLE_MATRIX(1),
     .ENABLE_DEBUG(0),
     .ENABLE_IMG(1),
     .ENABLE_FILE(1),
@@ -294,8 +322,8 @@ kg_mcu #(
     .UART_DLM_WR(1'b0),
     .UART_DLL_WR(1'b0),
     
-    .MATRIX_CMD(24'h0),
-    .MATRIX_CMD_WR(1'b0),
+    .MATRIX_CMD(matrix_cmd),
+    .MATRIX_CMD_WR(matrix_cmd_wr),
     
     .DEBUG_ADDR(16'h0),
     .DEBUG_DATA(16'h0),
@@ -557,8 +585,8 @@ overlay #(
 	.OSD_COMMAND(osd_command)
 );
 
-assign vga_hs = ~core_hs;
-assign vga_vs = ~core_vs;
+assign vga_hs = ~core_hs_d;
+assign vga_vs = ~core_vs_d;
 assign vga_blank = core_hb || core_vb_frame;
 assign vga_reset = core_vga_reset;
 
