@@ -404,7 +404,7 @@ COMFlush:
         jc      short COMFlush
 
 ; ---------------------   FDD init
-		call    fdreset
+		call    fd_reset
 ; ---------------------   HDD init
 		mov     al, 0e0h
 		call    atainit         ; the ATA master: AX = kilosectors, 0 if none
@@ -3088,7 +3088,7 @@ fdtbl   dw      FDReset, FDStatus, FDRead, FDWrite, FDVerify, FDFormat, FDBad, F
 		dw      FDBad, FDBad, FDBad, FDBad, FDBad, FDType, FDChanged, FDSetType, FDSetMedia
 
 FDReset:
-		call    fdreset
+		call    fd_reset
 		mov     ah, 0
 		mov     FDLastError, ah
 		ret
@@ -3109,7 +3109,7 @@ FDVerify:
 FDFormat:
 		mov     bp, 3
 FDXfer:
-		call    fdxfer
+		call    fd_xfer
 		ret
 
 FDParams:
@@ -3181,7 +3181,7 @@ fdw2:
 		pop     dx
 		ret
 
-fdreset proc near       ; DS = 40h: the motors off
+fd_reset proc near       ; DS = 40h: the motors off
 		push    ax
 		push    dx
 		mov     dx, FD_CTL
@@ -3191,7 +3191,7 @@ fdreset proc near       ; DS = 40h: the motors off
 		pop     dx
 		pop     ax
 		ret
-fdreset endp
+fd_reset endp
 
 fdops   db      1, 2, 1, 3      ; the port command of read, write, verify, format
 
@@ -3200,7 +3200,7 @@ fdops   db      1, 2, 1, 3      ; the port command of read, write, verify, forma
 ; AL = sectors done. A sector per port command; DOS does not cross a track in one call (else:
 ; the sectors up to the end of the track, status 4). A format writes the sectors 1..AL of the
 ; track with F6 (a physical drive: the whole track at its first sector)
-fdxfer proc near
+fd_xfer proc near
 		push    bx
 		push    cx
 		push    dx
@@ -3407,7 +3407,7 @@ fdx_done:
 		pop     cx
 		pop     bx
 		ret
-fdxfer endp
+fd_xfer endp
 
 
 OFFDX MACRO n
