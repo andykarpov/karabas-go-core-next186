@@ -6,7 +6,7 @@
     "visible": true,
     "type": "osd",
     "order": 6,
-    "spi_freq": 32,
+    "spi_freq": 16,
     "buttons": {"btn1": "osd", "btn2": "core"},
     "eeprom_bank": 255,
     "roms": [
