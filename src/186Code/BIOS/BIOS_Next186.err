@@ -4,6 +4,6 @@ BIOS_Next186.asm(2767) : Warning A4236: Text macro used prior to definition: HDI
 BIOS_Next186.asm(2768) : Warning A4236: Text macro used prior to definition: HDSize
 BIOS_Next186.asm(2769) : Warning A4236: Text macro used prior to definition: HDCount
 BIOS_Next186.asm(2770) : Warning A4236: Text macro used prior to definition: HD1Size
-BIOS_Next186.asm(4017) : Warning A4236: Text macro used prior to definition: HeadPtr
-BIOS_Next186.asm(4018) : Warning A4236: Text macro used prior to definition: TailPtr
-BIOS_Next186.asm(4019) : Warning A4236: Text macro used prior to definition: Buffer
+BIOS_Next186.asm(4032) : Warning A4236: Text macro used prior to definition: HeadPtr
+BIOS_Next186.asm(4033) : Warning A4236: Text macro used prior to definition: TailPtr
+BIOS_Next186.asm(4034) : Warning A4236: Text macro used prior to definition: Buffer

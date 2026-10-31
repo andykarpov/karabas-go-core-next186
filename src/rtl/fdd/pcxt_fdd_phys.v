@@ -28,6 +28,10 @@
    op_err: 0 done, 1 sector not found, 2 data CRC, 3 no index (no disk) / no track 0.
  - no disk: a selected drive with the motor running and no index for NOIDX_US is not present
    (floppy.v sees a disk change); an index pulse on such a drive starts a probe.
+ - a disk change without the change line (the Go has no DSKCHG pin): a probe also starts when
+   the motor of floppy.v comes on for a drive that is not present, and after an op (not a
+   format) that ends in op_err 1 / 3 (an other disk, another geometry, or taken out).
+   geo_probe: a probe of drive geo_n is pending or runs (its geometry is not known yet).
  - the drive is selected while an op / probe runs on it, else while floppy.v has it selected with
    its motor on (the motor line is shared by both drives).
  fdd_in / fdd_out are at the FPGA pins, high = active (the board has inverters to the connector):
@@ -69,6 +73,7 @@ module pcxt_fdd_phys #(
 	output reg [1:0] geo_upd = 2'b00,   // one clock: the geometry of drive n changed
 	input wire geo_n,
 	output wire geo_present,
+	output wire geo_probe,
 	output wire geo_wp,
 	output wire [7:0] geo_cyl,
 	output wire [7:0] geo_spt,
@@ -416,6 +421,15 @@ reg [5:0] op_pend_spt = 6'd18;
 reg [1:0] op_pend_rate = 2'd0;
 wire [1:0] f_rate = (op_pend_spt > 6'd10) ? 2'd0 : (op_pend_rate == 2'd1) ? 2'd1 : 2'd2;
 reg [1:0] probe_pend = 2'b00;
+
+// the motor of floppy.v on for a mapped drive that is not present: probe it
+reg [1:0] dor_motor_q = 2'b00;
+always @(posedge clk)
+	dor_motor_q <= dor_motor;
+wire [1:0] mot_new = dor_motor & ~dor_motor_q & ~present & {map1 != 2'd0, map0 != 2'd0};
+assign geo_probe = (geo_n ? (probe_pend[1] | mot_new[1]) : (probe_pend[0] | mot_new[0])) |
+	(active & probing & (n == geo_n));
+
 reg [6:0] steps = 7'd0;
 reg moved = 1'b0;
 reg dir = 1'b0;
@@ -454,8 +468,8 @@ always @(posedge clk) begin
 		op_pend_spt <= op_spt;
 		op_pend_rate <= op_rate;
 	end
-	if (probe[0]) probe_pend[0] <= 1'b1;
-	if (probe[1]) probe_pend[1] <= 1'b1;
+	if (probe[0] || mot_new[0]) probe_pend[0] <= 1'b1;
+	if (probe[1] || mot_new[1]) probe_pend[1] <= 1'b1;
 
 	if (reset) begin
 		st <= S_IDLE;
@@ -739,6 +753,9 @@ always @(posedge clk) begin
 
 		S_DONE: begin
 			op_done <= 1'b1;
+			// not found / no index: maybe another disk, probe it
+			if (kind != 2'd3 && map_n != 2'd0 && (op_err == 2'd1 || op_err == 2'd3))
+				begin if (n) probe_pend[1] <= 1'b1; else probe_pend[0] <= 1'b1; end
 			active <= 1'b0;
 			rx_en <= 1'b0;
 			tx_en <= 1'b0;
