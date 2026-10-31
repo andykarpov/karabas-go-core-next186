@@ -270,6 +270,7 @@ mapi1:
 		mov     word ptr ds:[1ah*4], offset int1a
 		mov     word ptr ds:[70h*4], offset int70
 		mov     word ptr ds:[74h*4], offset int74
+		mov     word ptr ds:[1eh*4], offset fddpt
 
 ; ------------------- BDA init
 		push    40h
@@ -283,7 +284,7 @@ mapi1:
 		rep     stosw
 		mov		word ptr [si+00h], 3f8h	 ; COM1 base port address
 		mov		word ptr [si+08h], 378h	 ; LPT1 base port address
-		mov     byte ptr [si+10h], 24h   ; equipment word (color 80x25, PS2 mouse present)
+		mov     byte ptr [si+10h], 65h   ; equipment word (two floppy drives, color 80x25, PS2 mouse present)
 		mov     word ptr [si+13h], 640   ; memory size in KB
 		add     word ptr [si+1ah], 1eh   ; next char pointer in kb buffer
 		add     word ptr [si+1ch], 1eh   ; last char pointer in kb buffer
@@ -402,6 +403,8 @@ COMFlush:
         mov     ah, 2
         jc      short COMFlush
 
+; ---------------------   FDD init
+		call    fdreset
 ; ---------------------   HDD init
 		mov     al, 0e0h
 		call    atainit         ; the ATA master: AX = kilosectors, 0 if none
@@ -526,9 +529,18 @@ int08 proc near
 		pop     ds
 
 		mov     bx, 40h
-		cmp     word ptr [bx], 0
+		cmp     byte ptr [bx], 0    ; the floppy motor count
 		jz      int08_nodec
-		dec     word ptr [bx]
+		dec     byte ptr [bx]
+		jnz     int08_nodec
+		and     byte ptr ds:[3fh], 0f0h
+		push    ax
+		push    dx
+		mov     dx, 3f2h
+		mov     al, 0               ; motors off (the floppy port of the core)
+		out     dx, al
+		pop     dx
+		pop     ax
 int08_nodec:
 		push    ax
 		mov     al, 20h
@@ -2759,6 +2771,17 @@ HD1Size           equ     <ds:[0ach]>   ; drive 81h (always the ATA slave): kilo
 HDCurDev          equ     <ds:[0aeh]>   ; the drive of the current INT 13h call: DRVHEAD of its ATA device, 0 if SPI SD
 HDCurDrv          equ     <ds:[0afh]>   ; the drive (DL) of the current INT 13h call
 
+FDLastError     equ     <ds:[41h]>
+FDMotorStatus   equ     <ds:[3fh]>
+FDMotorCount    equ     <ds:[40h]>
+FDDeadline      equ     <ds:[0b0h]> ; the tick count of the timeout of a wait
+FD_ST           equ     3f0h        ; R status (7 busy, 6 two heads, 5 write protected, 4 a disk, 1..0 error), W LBA 7..0
+FD_SPT          equ     3f1h        ; R sectors per track, W LBA 15..8
+FD_CTL          equ     3f2h        ; W 0 the drive, 4 motor A, 5 motor B; R cylinders
+FD_DATA         equ     3f3h        ; the sector buffer
+FD_CMD          equ     3f4h        ; W 1 read, 2 write, 3 format the sector LBA, 0 buffer pointer to 0
+FD_FMT          equ     3f5h        ; W format: 7..6 data rate, 5..0 sectors per track
+
 int13   proc near
 		push    ds
 		push    bp
@@ -2779,6 +2802,21 @@ inINT13:
 		mov     ah, 0aah        ; drive not ready
 		jmp     short exit2
 Disk1:
+		test    dl, 80h
+		jnz     short Disk2
+		cmp     ah, 18h         ; the floppy drives: functions 00h-18h
+		ja      short FDBad1
+		mov     bp, ax
+		shr     bp, 7
+		and     bp, 1feh
+		push    ds
+		call    cs:fdtbl[bp]
+		pop     ds
+		jmp     short exit
+FDBad1:
+		mov     ah, 1           ; bad command error
+		jmp     short exit
+Disk2:
 		mov     bp, ax
 		shr     bp, 7
 		and     bp, 1feh
@@ -3039,10 +3077,337 @@ DiskSetDASDType:
 DiskSetMediaType:
 DiskExtLock:
 DiskExtEject:
+FDBad:
 		mov     ah, 1       ; unsupported fn
 		ret
 
+; ---- the floppy drives A and B (DL 0, 1): the sector port of the core at 3F0h (fdd_port; no
+; 765, the SoC has no DMA); 1.44M drives, the disk geometry is that of the image or of the
+; probed physical disk
+fdtbl   dw      FDReset, FDStatus, FDRead, FDWrite, FDVerify, FDFormat, FDBad, FDBad, FDParams, FDBad, FDBad, FDBad, FDBad, FDReset, FDBad, FDBad
+		dw      FDBad, FDBad, FDBad, FDBad, FDBad, FDType, FDChanged, FDSetType, FDSetMedia
+
+FDReset:
+		call    fdreset
+		mov     ah, 0
+		mov     FDLastError, ah
+		ret
+
+FDStatus:
+		mov     ah, FDLastError
+		ret
+
+FDRead:
+		mov     bp, 0
+		jmp     short FDXfer
+FDWrite:
+		mov     bp, 1
+		jmp     short FDXfer
+FDVerify:
+		mov     bp, 2
+		jmp     short FDXfer
+FDFormat:
+		mov     bp, 3
+FDXfer:
+		call    fdxfer
+		ret
+
+FDParams:
+		mov     ah, 1
+		cmp     dl, 2
+		jae     short FDParams1
+		mov     bx, 4           ; 1.44M
+		mov     cx, 4f12h       ; 80 cylinders, 18 sectors
+		mov     dx, 0102h       ; 2 heads, 2 drives
+		push    cs
+		pop     es
+		mov     di, offset fddpt
+		xor     ax, ax
+FDParams1:
+		ret
+
+FDType:
+		mov     ah, 0           ; no drive
+		cmp     dl, 2
+		jae     short FDParams1
+		mov     ah, -1          ; a floppy drive without change line
+		jmp     DiskGetTypeexit
+
+FDChanged:
+		mov     ah, 6           ; no change line: the disk may have changed
+		ret
+
+FDSetMedia:
+		push    cs
+		pop     es
+		mov     di, offset fddpt
+FDSetType:
+		mov     ah, 0
+		ret
+
 int13   endp
+
+
+; diskette parameter table (INT 1Eh): 1.44M
+fddpt   db      0dfh, 02h, 25h, 02h, 18, 1bh, 0ffh, 6ch, 0f6h, 0fh, 08h
+
+fdarm:  ; DS = 40h: the timeout of a wait, 3 s from now
+		push    ax
+		mov     ax, ds:[6ch]
+		add     ax, 55
+		mov     FDDeadline, ax
+		pop     ax
+		ret
+
+fdexp:  ; DS = 40h: CF = 1 if the timeout has come
+		push    ax
+		mov     ax, ds:[6ch]
+		sub     ax, FDDeadline
+		cmp     ax, 8000h
+		pop     ax
+		ret
+
+fdwait:         ; DS = 40h: wait while the port is busy. Returns AL = status, CF = 1 on a timeout
+		push    dx
+		mov     dx, FD_ST
+		call    fdarm
+fdw1:
+		in      al, dx
+		test    al, 80h
+		jz      short fdw2      ; CF = 0
+		call    fdexp
+		jnc     short fdw1
+fdw2:
+		pop     dx
+		ret
+
+fdreset proc near       ; DS = 40h: the motors off
+		push    ax
+		push    dx
+		mov     dx, FD_CTL
+		mov     al, 0
+		out     dx, al
+		and     byte ptr FDMotorStatus, 0f0h
+		pop     dx
+		pop     ax
+		ret
+fdreset endp
+
+fdops   db      1, 2, 1, 3      ; the port command of read, write, verify, format
+
+; DS = 40h. AL = sectors (format: sectors per track), CH = cylinder, CL = sector, DH = head,
+; DL = drive, ES:BX = buffer, BP = 0 read, 1 write, 2 verify, 3 format. Returns AH = status,
+; AL = sectors done. A sector per port command; DOS does not cross a track in one call (else:
+; the sectors up to the end of the track, status 4). A format writes the sectors 1..AL of the
+; track with F6 (a physical drive: the whole track at its first sector)
+fdxfer proc near
+		push    bx
+		push    cx
+		push    dx
+		push    si
+		push    di
+		push    es
+		push    bp              ; [bp] = the op
+		mov     bp, sp
+		sub     sp, 8           ; [bp-2] LBA, [bp-4] sectors done, [bp-6] sectors per track, [bp-8] sectors
+		xor     di, di
+		mov     [bp-4], di
+		mov     byte ptr FDMotorCount, 0ffh     ; no motor off while here
+		mov     ah, 0
+		mov     [bp-8], ax
+		test    al, al
+		jz      fdx_done
+		mov     ah, 1
+		cmp     dl, 2
+		jae     fdx_done
+		push    cx
+		mov     cl, dl
+		mov     al, 1
+		shl     al, cl
+		mov     FDMotorStatus, al
+		shl     al, 4           ; the motor of the drive
+		pop     cx
+		or      al, dl
+		push    dx
+		mov     dx, FD_CTL
+		out     dx, al
+		mov     dx, FD_ST
+		in      al, dx
+		pop     dx
+		mov     ah, 80h         ; not ready
+		test    al, 10h         ; a disk
+		jz      fdx_done
+		cmp     byte ptr [bp], 1
+		je      short fdx_wp
+		cmp     byte ptr [bp], 3
+		jne     short fdx_geo
+fdx_wp:
+		mov     ah, 3           ; write protected
+		test    al, 20h
+		jnz     fdx_done
+fdx_geo:
+		mov     di, 1           ; DI = heads
+		test    al, 40h
+		jz      short fdx_g1
+		inc     di
+fdx_g1:
+		cmp     byte ptr [bp], 3
+		jne     short fdx_g2
+		mov     di, 2           ; format: two heads, AL sectors per track, from sector 1
+		mov     ax, [bp-8]
+		mov     cl, 1
+		jmp     short fdx_g3
+fdx_g2:
+		push    dx
+		mov     dx, FD_SPT
+		in      al, dx
+		pop     dx
+		mov     ah, 0
+fdx_g3:
+		mov     [bp-6], ax
+		and     cl, 3fh
+		mov     ah, 4           ; sector not found
+		jz      fdx_done
+		cmp     cl, [bp-6]
+		ja      fdx_done
+		mov     ax, di
+		cmp     dh, al
+		jae     fdx_done
+		push    dx              ; LBA = (C * heads + H) * spt + R - 1
+		mov     al, ch
+		mov     ah, 0
+		mul     di
+		pop     dx
+		push    dx
+		add     al, dh
+		adc     ah, 0
+		mul     word ptr [bp-6]
+		pop     dx
+		add     al, cl
+		adc     ah, 0
+		dec     ax
+		mov     [bp-2], ax
+		mov     di, bx          ; ES:DI normalized
+		mov     ax, di
+		shr     ax, 4
+		mov     bx, es
+		add     ax, bx
+		mov     es, ax
+		and     di, 15
+		cmp     byte ptr [bp], 3
+		jne     short fdx_sec
+		push    cx              ; format: the buffer of F6, the sectors per track and the rate
+		push    dx
+		mov     dx, FD_CMD
+		mov     al, 0
+		out     dx, al
+		mov     dx, FD_DATA
+		mov     al, 0f6h
+		mov     cx, 512
+fdx_f1:
+		out     dx, al
+		loop    short fdx_f1
+		mov     ax, [bp-6]      ; the rate: 36 sectors 1M, 15+ 500K, else 250K
+		mov     ah, 0c0h
+		cmp     al, 36
+		jae     short fdx_f2
+		mov     ah, 0
+		cmp     al, 15
+		jae     short fdx_f2
+		mov     ah, 80h
+fdx_f2:
+		or      al, ah
+		mov     dx, FD_FMT
+		out     dx, al
+		pop     dx
+		pop     cx
+fdx_sec:
+		mov     ax, [bp-4]
+		cmp     ax, [bp-8]
+		je      fdx_ok
+		add     al, cl          ; the sector, within the track
+		cmp     al, [bp-6]
+		mov     ah, 4
+		ja      fdx_done
+		push    cx
+		push    dx
+		cmp     byte ptr [bp], 1
+		jne     short fdx_s1
+		mov     dx, FD_CMD      ; write: the sector into the buffer
+		mov     al, 0
+		out     dx, al
+		mov     dx, FD_DATA
+		push    ds
+		push    es
+		pop     ds
+		mov     si, di
+		mov     cx, 512
+		rep     outsb
+		pop     ds
+fdx_s1:
+		mov     dx, FD_ST
+		mov     ax, [bp-2]
+		out     dx, al          ; LBA
+		inc     dx
+		mov     al, ah
+		out     dx, al
+		mov     bl, [bp]
+		mov     bh, 0
+		mov     al, cs:fdops[bx]
+		mov     dx, FD_CMD
+		out     dx, al
+		call    fdwait
+		jc      short fdx_to1
+		and     al, 3           ; the error
+		jnz     short fdx_err1
+		cmp     byte ptr [bp], 0
+		jne     short fdx_s2
+		mov     dx, FD_DATA     ; read: the buffer
+		mov     cx, 512
+		rep     insb
+		sub     di, 512
+fdx_s2:
+		cmp     byte ptr [bp], 2
+		jae     short fdx_s3
+		add     di, 512         ; read, write: the next sector of the buffer
+fdx_s3:
+		pop     dx
+		pop     cx
+		inc     word ptr [bp-4]
+		inc     word ptr [bp-2]
+		jmp     short fdx_sec
+fdx_to1:
+		pop     dx
+		pop     cx
+		mov     ah, 80h         ; timeout
+		jmp     short fdx_done
+fdx_err1:
+		pop     dx
+		pop     cx
+		mov     ah, 4           ; 1: sector not found
+		cmp     al, 1
+		je      short fdx_done
+		mov     ah, 10h         ; 2: data error
+		cmp     al, 2
+		je      short fdx_done
+		mov     ah, 80h         ; 3: no disk
+		jmp     short fdx_done
+fdx_ok:
+		mov     ah, 0
+fdx_done:
+		mov     al, [bp-4]
+		mov     FDLastError, ah
+		mov     byte ptr FDMotorCount, 37       ; motor off in 2 s
+		mov     sp, bp
+		pop     bp
+		pop     es
+		pop     di
+		pop     si
+		pop     dx
+		pop     cx
+		pop     bx
+		ret
+fdxfer endp
 
 
 OFFDX MACRO n
@@ -3838,19 +4203,21 @@ int19 proc near
 		push    40h
 		pop     ds
 		mov     byte ptr ds:[8eh], 0
-		mov     ax, 201h
-		mov     cx, 1
-		mov     dx, 80h
-		push    0
-		pop     es
-		mov     bx, 7c00h
-		int     13h
-		jc      int19err
-		cmp     word ptr es:[7dfeh], 0aa55h
-		jne     int19err
+		in      al, 6           ; the OSD Boot item: bit 0 = C: first
+		test    al, 1
+		jnz     short int19c
+		mov     dl, 0
+		call    tryboot
 		mov     dl, 80h
-		db      0eah
-		dw      7c00h, 0     ; jmp far 0000h:7c00h
+		call    tryboot
+		jmp     short int19err
+int19c:
+		mov     dl, 80h
+		call    tryboot
+		push    ax
+		mov     dl, 0
+		call    tryboot
+		pop     ax              ; the error of C:
 int19err:                       ; the MBR read: AX of INT 13h, ATA status, error, step (ataread_err)
 		push    ax
 		push    cs
@@ -3881,6 +4248,39 @@ int19err:                       ; the MBR read: AX of INT 13h, ATA status, error
 		int     10h
 		int     18h
 int19 endp
+
+tryboot proc near       ; DL = drive: boot from it, or return AX = INT 13h AX of the boot sector read
+		mov     cx, 3           ; tries (a floppy: reset between)
+tryb1:
+		push    cx
+		push    dx
+		mov     ax, 201h
+		mov     cx, 1
+		mov     dh, 0
+		push    0
+		pop     es
+		mov     bx, 7c00h
+		int     13h
+		pop     dx
+		pop     cx
+		jnc     short tryb2
+		test    dl, 80h
+		jnz     short tryb3     ; a hard disk: once
+		cmp     ah, 80h
+		je      short tryb3     ; no disk
+		push    ax
+		mov     ah, 0
+		int     13h
+		pop     ax
+		loop    short tryb1
+tryb3:
+		ret
+tryb2:
+		cmp     word ptr es:[7dfeh], 0aa55h
+		jne     short tryb3
+		db      0eah
+		dw      7c00h, 0        ; jmp far 0000h:7c00h, DL = drive
+tryboot endp
 
 
 ; --------------------- INT 1ah - Get System Time ------------------
