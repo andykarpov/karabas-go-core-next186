@@ -1,7 +1,9 @@
-BIOS_Next186.asm(539) : Warning A4236: Text macro used prior to definition: KbdFlags3
-BIOS_Next186.asm(2692) : Warning A4236: Text macro used prior to definition: EquipmentWord
-BIOS_Next186.asm(2718) : Warning A4236: Text macro used prior to definition: HDIsIde
-BIOS_Next186.asm(2719) : Warning A4236: Text macro used prior to definition: HDSize
-BIOS_Next186.asm(3587) : Warning A4236: Text macro used prior to definition: HeadPtr
-BIOS_Next186.asm(3588) : Warning A4236: Text macro used prior to definition: TailPtr
-BIOS_Next186.asm(3589) : Warning A4236: Text macro used prior to definition: Buffer
+BIOS_Next186.asm(576) : Warning A4236: Text macro used prior to definition: KbdFlags3
+BIOS_Next186.asm(2729) : Warning A4236: Text macro used prior to definition: EquipmentWord
+BIOS_Next186.asm(2755) : Warning A4236: Text macro used prior to definition: HDIsIde
+BIOS_Next186.asm(2756) : Warning A4236: Text macro used prior to definition: HDSize
+BIOS_Next186.asm(2757) : Warning A4236: Text macro used prior to definition: HDCount
+BIOS_Next186.asm(2758) : Warning A4236: Text macro used prior to definition: HD1Size
+BIOS_Next186.asm(3652) : Warning A4236: Text macro used prior to definition: HeadPtr
+BIOS_Next186.asm(3653) : Warning A4236: Text macro used prior to definition: TailPtr
+BIOS_Next186.asm(3654) : Warning A4236: Text macro used prior to definition: Buffer

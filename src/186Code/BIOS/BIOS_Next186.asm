@@ -403,8 +403,34 @@ COMFlush:
         jc      short COMFlush
 
 ; ---------------------   HDD init
-		call    sdinit
+		mov     al, 0e0h
+		call    atainit         ; the ATA master: AX = kilosectors, 0 if none
+		mov     byte ptr HDIsIde, 0e0h
+		test    ax, ax
+		jnz     short hd0ok
+		mov     byte ptr HDIsIde, 0
+		call    sdinit          ; else the SPI SD card
+hd0ok:
 		mov     HDSize, ax
+		mov     al, 0f0h
+		call    atainit         ; the ATA slave
+		mov     HD1Size, ax
+		mov     cl, 0
+		test    ax, ax
+		jz      short hd1none
+		inc     cx
+		cmp     word ptr HDSize, 0
+		jne     short hd1none
+		mov     HDSize, ax      ; no drive 80h: the slave is 80h
+		mov     byte ptr HDIsIde, 0f0h
+		mov     word ptr HD1Size, 0
+		dec     cx
+hd1none:
+		cmp     word ptr HDSize, 0
+		je      short hdcnt
+		inc     cx
+hdcnt:
+		mov     HDCount, cl
 		push    cs
 		pop     es
 		mov     si, offset biosmsg
@@ -415,11 +441,21 @@ COMFlush:
 		shr     ax, 1
 		call    dispAX
 		mov     si, offset msgmb
-		cmp     byte ptr HDIsIde, 1
-		jne     short msg_hd_prt
+		cmp     byte ptr HDIsIde, 0
+		je      short msg_hd_prt
 		mov     si, offset msgata
 msg_hd_prt:
 		call    prts
+		mov     ax, HD1Size
+		test    ax, ax
+		jz      short msg_hd1_none
+		mov     si, offset msghd1
+		call    prts
+		shr     ax, 1
+		call    dispAX
+		mov     si, offset msgata
+		call    prts
+msg_hd1_none:
 		test    byte ptr KbdFlags3, 10h
 		jz      nokbmsg
 		mov     si, offset msgkb
@@ -445,6 +481,7 @@ bioscont    db 13, 10, 'CPU: 80186 50Mhz (50MIPS, 100Mhz 32bit bus)', 13, 10
             db 'Cache: 8KB, 4-way, 128x64 bytes data/inst', 13, 10
 			db 'HD0: ', 0
 msgata      db 'MB Virtual HDD', 13, 10, 0
+msghd1      db 'HD1: ', 0
 
 ; ---------------------------- INT 07 ---------------------
 int07 proc near ; coprocessor ESC sequence
@@ -2715,8 +2752,12 @@ int12   endp
 ; --------------------- INT 13h - Disk services ----------------
 HDLastError       equ     <ds:[74h]>
 HDOpStarted       equ     <ds:[92h]>    ; bit 3: in INT13h (all other bits must be 0)
-HDIsIde           equ     <ds:[93h]>    ; 1 if ATA IDE, 0 if SPI SD
-HDSize            equ     <ds:[94h]>
+HDIsIde           equ     <ds:[93h]>    ; drive 80h: the ATA DRVHEAD of its device (0E0h master, 0F0h slave), 0 if SPI SD
+HDSize            equ     <ds:[94h]>    ; drive 80h: kilosectors, 0 if none
+HDCount           equ     <ds:[75h]>    ; hard disks
+HD1Size           equ     <ds:[0ach]>   ; drive 81h (always the ATA slave): kilosectors, 0 if none
+HDCurDev          equ     <ds:[0aeh]>   ; the drive of the current INT 13h call: DRVHEAD of its ATA device, 0 if SPI SD
+HDCurDrv          equ     <ds:[0afh]>   ; the drive (DL) of the current INT 13h call
 
 int13   proc near
 		push    ds
@@ -2763,12 +2804,10 @@ disktbl dw      DiskReset, DiskGetStatus, DiskRead, DiskWrite, DiskVerify, DiskF
 		dw      DiskExtEject, DiskExtSeek, DiskExtGetParams
 
 DiskGetType:
-		cmp     dl, 80h
-		jne     short DiskReset ; ah=0, drive not present
-		mov     cx, HDSize      
-		mov     dx, cx
-		test    cx, cx
-		jz      short DiskReset ; ah=0, drive not present
+		call    seldrive
+		jc      short DiskReset ; ah=0, drive not present
+		mov     cx, ax
+		mov     dx, ax
 		mov     ah, -3      ; HD present
 		shr     cx, 6
 		shl     dx, 10      ; CX:DX = HDSize * 1024
@@ -2779,11 +2818,13 @@ DiskGetTypeexit:
 		jmp     short   exit1        
 
 DiskExtInstCheck:
+		call    seldrive
+		jnc     short DiskExtIC1
+		jmp     notready
+DiskExtIC1:
 		xchg    bl, bh
 		mov     ah, -1
 		mov     cx, 1       ; extended disk access functions (AH=42h-44h,47h,48h) supported
-		cmp     dl, 80h
-		jne     short notready
 		jmp     short DiskGetTypeexit
 
 DiskReset:
@@ -2807,8 +2848,10 @@ DiskRead:
 DiskRead1:        
 		test    al, al
 		jz      short DiskReset
-		cmp     dl, 80h
-		jne     short notready
+		push    ax
+		call    seldrive
+		pop     ax
+		jc      short notready
 		mov     ah, 4
 		test    cl, 3fh
 		jz      short DiskReadend   ; bad sector 0
@@ -2864,20 +2907,19 @@ DiskReady:
 DiskRecalibrate:
 DiskDiag:
 DiskExtSeek:
-		cmp     word ptr HDSize, 0
-		je      short notready
-		cmp     dl, 80h
-		je      short DiskReset
+		call    seldrive
+		jc      short notready
+		mov     ah, 0       ; success
+		ret
 notready:        
 		mov     ah, 0aah        ; disk not ready
 		ret
 
 DiskGetParams:
-		cmp     dl, 80h
+		call    seldrive
 		mov     ah, 7
-		jne     short DiskReadend   ; ret
+		jc      short DiskReadend   ; ret
 		mov     bl, 0   ; ???
-		mov     ax, HDSize
 		mov     dx, ax
 		shl     ax, 10
 		shr     dx, 6
@@ -2894,7 +2936,8 @@ dgpok:
 		shl     al, 6
 		or      al, 3fh
 		mov     cx, ax
-		mov     dx, 0fe01h
+		mov     dx, 0fe00h
+		mov     dl, HDCount
 		xor     ax, ax
 		ret        
 
@@ -2907,8 +2950,10 @@ DiskExtWrite:
 DiskExtRead:
 		mov     bp, sdread
 DiskExtRead1:
-		cmp     dl, 80h
-		jne     short notready
+		push    ax
+		call    seldrive
+		pop     ax
+		jc      short notready
 		push    es
 		push    ax
 		pusha
@@ -2942,10 +2987,9 @@ DiskExtRead3:
 		ret
 
 DiskExtGetParams:
-		cmp     dl, 80h
-		jne     notready
 		push    ax
-		mov     ax, HDSize   
+		call    seldrive
+		jc      short DiskExtGPnone
 		mov     bp, sp
 		mov     ds, [bp+8]
 		xor     bp, bp
@@ -2967,6 +3011,27 @@ DiskExtGetParams:
 		pop     ax
 		mov     ah, 0
 		ret 
+DiskExtGPnone:
+		pop     ax
+		jmp     notready
+
+seldrive:   ; DS = 40h, DL = drive. Sets HDCurDev, HDCurDrv. Returns AX = kilosectors, CF = 1 if no such drive
+		mov     HDCurDrv, dl
+		cmp     dl, 80h
+		jne     short seldrive1
+		mov     al, HDIsIde
+		mov     HDCurDev, al
+		mov     ax, HDSize
+		jmp     short seldrive2
+seldrive1:
+		mov     byte ptr HDCurDev, 0f0h
+		mov     ax, HD1Size
+		cmp     dl, 81h
+		je      short seldrive2
+		xor     ax, ax
+seldrive2:
+		cmp     ax, 1       ; CF = 1 if AX = 0
+		ret
 
 DiskReadSectBuffer:
 DiskWriteSectBuffer:
@@ -4067,10 +4132,17 @@ prhex2:
 ; A write of INT 13h to sector 0 (the MBR) is not done: it shows where INT 13h was called from
 ; and waits for a key. A debug trap for the MBR that was overwritten with memory of COMMAND.COM.
 wrtrap: ; DX:AX = LBA, ES:BX = buffer, SS:SP+DI = the return address of INT 13h. CF=1: blocked
+		push    ds
+		push    40h
+		pop     ds
+		cmp     byte ptr HDCurDrv, 80h  ; only the MBR of drive 80h
+		pop     ds
+		jne     short wrtrap0
 		push    ax
 		or      ax, dx
 		pop     ax
 		jz      short wrtrap1
+wrtrap0:
 		clc
 		ret
 wrtrap1:
@@ -4265,19 +4337,24 @@ sdresp1:
 sdcmd1: ret         
 
 ;---------------------  read ----------------------
-sdverify:
-		cmp     byte ptr HDIsIde, 1
-		jne     short sdverify_spi
-		call    ataverify
+isspi:      ; ZF = 1 if the drive of the INT 13h call is the SPI SD card
+		push    ds
+		push    40h
+		pop     ds
+		cmp     byte ptr HDCurDev, 0
+		pop     ds
 		ret
+sdverify:
+		call    isspi
+		je      short sdverify_spi
+		jmp     ataverify
 sdverify_spi:
 		push    sdvblk
 		jmp     short sdread1
 sdread:   ; DX:AX sector, ES:BX buffer, CX=sectors. returns AX=read sectors
-		cmp     byte ptr HDIsIde, 1
-		jne     short sdread_spi
-		call    ataread
-		ret
+		call    isspi
+		je      short sdread_spi
+		jmp     ataread
 sdread_spi:
 		push    sdrblk   ; push proc address (read or verify) on stack
 sdread1:        
@@ -4352,10 +4429,9 @@ sdr1:
 
 ;---------------------  write ----------------------
 sdwrite:   ; DX:AX sector, ES:BX buffer, CX=sectors, returns AX=wrote sectors
-		cmp     byte ptr HDIsIde, 1
-		jne     short sdwrite_spi
-		call    atawrite
-		ret
+		call    isspi
+		je      short sdwrite_spi
+		jmp     atawrite
 sdwrite_spi:
 		push    ax
 		mov     al, dl
@@ -4423,14 +4499,7 @@ sdwwait1:
 		jmp     sdr1
 		
 ;---------------------  init SD / ATA ----------------------
-sdinit  proc near       ; returns AX = num kilosectors
-		call    atainit
-		test    ax, ax
-		jz      short sdinit_spi
-		mov     byte ptr HDIsIde, 1
-		ret
-sdinit_spi:
-		mov     byte ptr HDIsIde, 0
+sdinit  proc near       ; the SPI SD card, returns AX = num kilosectors
 		push    ds
 		push    cx
 		push    dx
@@ -4541,12 +4610,15 @@ ATA_DRVHEAD     equ     1f6h
 ATA_STATUS      equ     1f7h
 ATA_COMMAND     equ     1f7h
 
-atainit proc near
+atainit proc near   ; AL = DRVHEAD of the device (0E0h master, 0F0h slave). Returns AX = kilosectors, 0 if none
 		push    cx
 		push    dx
 		push    di
 		push    es
 
+		mov     ah, al
+		mov     dx, ATA_DRVHEAD
+		out     dx, al          ; select the device
 		mov     dx, ATA_STATUS
 		in      al, dx
 		cmp     al, 0ffh
@@ -4574,7 +4646,7 @@ atainit_bsyok:
 		jz      short atainit_none
 
 		mov     dx, ATA_DRVHEAD
-		mov     al, 0e0h        ; LBA mode, Master
+		mov     al, ah          ; LBA mode, the device
 		out     dx, al
 
 		mov     dx, ATA_COMMAND
@@ -4640,7 +4712,7 @@ atainit endp
 ataread proc near
 		push    bp
 		mov     bp, sp
-		sub     sp, 6           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors
+		sub     sp, 8           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors, [bp-8]: DRVHEAD
 		push    bx
 		push    cx
 		push    dx
@@ -4651,6 +4723,12 @@ ataread proc near
 		mov     [bp-2], dx      ; LBA bits 16-31
 		mov     [bp-4], ax      ; LBA bits 0-15
 		mov     [bp-6], cx      ; total sectors requested
+		push    ds
+		push    40h
+		pop     ds
+		mov     al, HDCurDev    ; the device of the drive
+		pop     ds
+		mov     [bp-8], al
 		mov     di, bx          ; ES:DI = buffer pointer
 		cld
 
@@ -4679,7 +4757,7 @@ ataread_bsyok:
 		; ATA_DRVHEAD: 0xE0 | (LBA[27:24] & 0x0F)
 		mov     al, byte ptr [bp-1] ; LBA bits 24-31
 		and     al, 0fh
-		or      al, 0e0h        ; LBA mode, Master (dev 0)
+		or      al, [bp-8]      ; LBA mode, the device
 		mov     dx, ATA_DRVHEAD
 		out     dx, al
 
@@ -4786,7 +4864,7 @@ ataread endp
 atawrite proc near
 		push    bp
 		mov     bp, sp
-		sub     sp, 6           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors
+		sub     sp, 8           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors, [bp-8]: DRVHEAD
 		push    bx
 		push    cx
 		push    dx
@@ -4797,6 +4875,12 @@ atawrite proc near
 		mov     [bp-2], dx      ; LBA bits 16-31
 		mov     [bp-4], ax      ; LBA bits 0-15
 		mov     [bp-6], cx      ; total sectors requested
+		push    ds
+		push    40h
+		pop     ds
+		mov     al, HDCurDev    ; the device of the drive
+		pop     ds
+		mov     [bp-8], al
 		mov     si, bx
 		push    es
 		pop     ds              ; DS:SI = source buffer
@@ -4825,7 +4909,7 @@ atawrite_bsy1ok:
 		; 2. Send ATA parameters
 		mov     al, byte ptr [bp-1] ; LBA high byte (bits 24-31)
 		and     al, 0fh
-		or      al, 0e0h        ; LBA mode, Master
+		or      al, [bp-8]      ; LBA mode, the device
 		mov     dx, ATA_DRVHEAD
 		out     dx, al
 
@@ -4933,7 +5017,7 @@ atawrite endp
 ataverify proc near
 		push    bp
 		mov     bp, sp
-		sub     sp, 6           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors
+		sub     sp, 8           ; [bp-2]: LBA_HI, [bp-4]: LBA_LO, [bp-6]: total_sectors, [bp-8]: DRVHEAD
 		push    bx
 		push    cx
 		push    dx
@@ -4942,6 +5026,12 @@ ataverify proc near
 		mov     [bp-2], dx      ; LBA bits 16-31
 		mov     [bp-4], ax      ; LBA bits 0-15
 		mov     [bp-6], cx      ; total sectors requested
+		push    ds
+		push    40h
+		pop     ds
+		mov     al, HDCurDev    ; the device of the drive
+		pop     ds
+		mov     [bp-8], al
 
 ataverify_loop:
 		test    cx, cx
@@ -4966,7 +5056,7 @@ ataverify_bsyok:
 		; 2. Send ATA parameters
 		mov     al, byte ptr [bp-1] ; LBA high byte
 		and     al, 0fh
-		or      al, 0e0h        ; LBA mode, Master
+		or      al, [bp-8]      ; LBA mode, the device
 		mov     dx, ATA_DRVHEAD
 		out     dx, al
 
