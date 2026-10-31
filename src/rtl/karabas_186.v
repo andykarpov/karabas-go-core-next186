@@ -2,7 +2,8 @@
 `default_nettype none
 
 module karabas_186 #(
-    parameter BURST_MAX_MHZ = 0 // see kg_mcu
+    parameter BURST_MAX_MHZ = 0, // see kg_mcu
+    parameter PHYS_FDD = 0       // 1: the physical floppy drives of the floppy connector (Karabas Go)
 )(
     input  wire         clk,
 
@@ -48,7 +49,12 @@ module karabas_186 #(
     input  wire         mcu_mosi,
     output wire         mcu_miso,
     input  wire         mcu_burst_cs_n,  // burst transfers (karabas-go-firmware docs/burst_protocol.md)
-    output wire         mcu_burst_ready
+    output wire         mcu_burst_ready,
+
+    // the floppy connector (PHYS_FDD), at the pins: { rdata, wprt, tr00, index },
+    // { wdata, wgate, side, step, dir, motor, ds1, ds0 }, see pcxt_fdd_phys
+    input  wire [3:0]   fdd_in,
+    output wire [7:0]   fdd_out
 );
 
 wire clk_buf;
@@ -103,6 +109,10 @@ wire [3:0] ide_a;
 wire [1:0] ide_cs;
 wire ide_we;
 wire [1:0] ide_int;
+wire fdc_cs, fdc_we;
+wire kb_boot_c;
+wire [2:0] fdc_a;
+wire [7:0] fdc_dat_o, fdc_dat_i;
 wire cpu_reset;
 // soundwave gives the mix as unsigned (+32768, for the PWM); the I2S DAC and HDMI take signed samples
 wire [15:0] sys_laudio, sys_raudio;
@@ -208,6 +218,13 @@ system sys_inst(
     .IDE_WE(ide_we),
     .IDE_CS(ide_cs),
     .IDE_INT(ide_int),
+
+    .FDC_CS(fdc_cs),
+    .FDC_A(fdc_a),
+    .FDC_WE(fdc_we),
+    .FDC_DAT_O(fdc_dat_o),
+    .FDC_DAT_I(fdc_dat_i),
+    .SYS_CFG({7'd0, kb_boot_c}),
 
     .I2C_SCL(),
     .I2C_SDA(),
@@ -378,8 +395,8 @@ kg_mcu #(
     .IMG_Q_WR(img_q_wr),
     .IMG_Q_DI(img_q_di),
     .IMG_Q_ACK(img_q_ack),
-    .IMG_PHYS_WR(),
-    .IMG_PHYS(),
+    .IMG_PHYS_WR(img_phys_wr),
+    .IMG_PHYS(img_phys),
     .IMG_FLUSH(),
     
     // esp
@@ -409,19 +426,27 @@ wire [15:0] img_sum;
 wire img_q_wr;
 wire [23:0] img_q_di;
 wire img_q_ack;
+wire img_phys_wr;
+wire [15:0] img_phys;
 
 wire [7:0] sdc_img_mounted;
 wire [63:0] sdc_img_size;
-wire [7:0] sdc_rd;
-wire [7:0] sdc_wr;
-wire [31:0] sdc_sector;
 wire sdc_busy, sdc_done, sdc_error;
 wire [2:0] sdc_slot;
 wire sdc_byte_in_strobe;
 wire [8:0] sdc_byte_addr;
 wire [7:0] sdc_byte_in_data;
-wire [7:0] sdc_byte_out_data;
 wire sdc_active;
+
+wire [15:0] hdf_dout;
+wire [1:0] hdf_rd, hdf_wr;
+wire [31:0] hdf_sector;
+wire [7:0] hdf_byte_out_data;
+wire hdf_own = (sdc_slot < 3'd2);
+wire fdd_own = (sdc_slot[2:1] == 2'b01);
+wire [1:0] fdd_rd, fdd_wr;
+wire [31:0] fdd_sector;
+wire [7:0] fdd_byte_out_data;
 
 img_sdc #(
     .OUT_LATENCY(3),
@@ -445,9 +470,9 @@ img_sdc #(
 
     .sdc_img_mounted(sdc_img_mounted),
     .sdc_img_size(sdc_img_size),
-    .sdc_rd(sdc_rd),
-    .sdc_wr(sdc_wr),
-    .sdc_sector(sdc_sector),
+    .sdc_rd({4'b0000, fdd_rd, hdf_rd}),
+    .sdc_wr({4'b0000, fdd_wr, hdf_wr}),
+    .sdc_sector((hdf_rd != 2'b00 || hdf_wr != 2'b00) ? hdf_sector : fdd_sector), // the lower slots go first
     .sdc_busy(sdc_busy),
     .sdc_done(sdc_done),
     .sdc_error(sdc_error),
@@ -455,15 +480,10 @@ img_sdc #(
     .sdc_byte_in_strobe(sdc_byte_in_strobe),
     .sdc_byte_addr(sdc_byte_addr),
     .sdc_byte_in_data(sdc_byte_in_data),
-    .sdc_byte_out_data(sdc_byte_out_data),
+    .sdc_byte_out_data(fdd_own ? fdd_byte_out_data : hdf_byte_out_data),
     .active(sdc_active)
 );
 
-wire [15:0] hdf_dout;
-wire [1:0] hdf_rd, hdf_wr;
-wire [31:0] hdf_sector;
-wire [7:0] hdf_byte_out_data;
-wire hdf_own = (sdc_slot < 3'd2);
 
 wire hdd0_dev0_en = (kb_hdd0_mode != 2'd2);
 wire core_sd_cs_n;
@@ -503,13 +523,42 @@ hdf_ata #(
     .led()
 );
 
-assign sdc_rd = { 6'b000000, hdf_rd };
-assign sdc_wr = { 6'b000000, hdf_wr };
-assign sdc_sector = hdf_sector;
-assign sdc_byte_out_data = hdf_byte_out_data;
-
 assign ide_dat_i = hdf_dout;
 assign ide_int = 2'b00;
+
+//---------- Floppy drives ------------
+// fdd_port (rtl/fdd) at 3F0h-3F5h: a sector port for the BIOS (no 765: the SoC has no DMA).
+// Drives A and B: slots 2 and 3 of img_sdc (PHYS_FDD: or a physical drive of the floppy
+// connector, pcxt_fdd_phys).
+
+fdd_port #(.PHYS(PHYS_FDD)) u_fdd(
+	.clk(clk_bus),
+	.reset(areset),
+
+	.cs(fdc_cs),
+	.we(fdc_we),
+	.a(fdc_a),
+	.din(fdc_dat_o),
+	.dout(fdc_dat_i),
+
+	.img_mounted(sdc_img_mounted[3:2]),
+	.img_size(sdc_img_size),
+	.sdc_rd(fdd_rd),
+	.sdc_wr(fdd_wr),
+	.sdc_sector(fdd_sector),
+	.sdc_busy(sdc_busy & fdd_own),
+	.sdc_done(sdc_done & fdd_own),
+	.sdc_error(sdc_error),
+	.sdc_byte_in_strobe(sdc_byte_in_strobe & fdd_own),
+	.sdc_byte_addr(sdc_byte_addr),
+	.sdc_byte_in_data(sdc_byte_in_data),
+	.sdc_byte_out_data(fdd_byte_out_data),
+
+	.img_phys_wr(img_phys_wr),
+	.img_phys(img_phys),
+	.fdd_in(fdd_in),
+	.fdd_out(fdd_out)
+);
 
 kg_sync #(.W(1)) u_sync_dvi(
     .clk(clk_vga),
@@ -524,11 +573,12 @@ wire [2:0] kb_speed;
 wire [1:0] kb_isawait;
 wire [1:0] kb_hdd0_mode;
 
-// register n = OSD item n of core*.json; the file items (HDD0 7, HDD1 8) have no register value
-wire [87:0] softsw_regs;
+// register n = OSD item n of core*.json; the file items (HDD0 8, HDD1 9, FDD A 10, FDD B 11)
+// have no register value
+wire [111:0] softsw_regs;
 kg_soft_switches #(
-    .N(11),
-    .INIT(88'h00_0000_0000_0001_0001_0000)
+    .N(14),
+    .INIT(112'h0000_0000_0000_0000_0001_0001_0000)
 ) u_softsw(
     .clk(clk_bus),
     .command(softsw_command),
@@ -543,8 +593,9 @@ assign kb_joyswap   = softsw_regs[3*8];
 assign kb_midi      = softsw_regs[4*8];
 assign kb_adlibhide = softsw_regs[5*8];
 assign kb_hdd0_mode = softsw_regs[6*8 +: 2];
-assign kb_nmi       = softsw_regs[9*8];
-assign kb_reset     = softsw_regs[10*8];
+assign kb_boot_c    = softsw_regs[7*8];   // Boot: 0 A: first, 1 C: first
+assign kb_nmi       = softsw_regs[12*8];
+assign kb_reset     = softsw_regs[13*8];
 
 // --------- BIOS ROM loader ------------
 

@@ -241,6 +241,14 @@ module system (
 	output  wire [1:0] IDE_CS,
 	input   wire [1:0] IDE_INT,
 
+	// the floppy sector port (fdd_port in karabas_186): 3F0h-3F5h, 3F7h
+	output  wire       FDC_CS,     // one clock per access (CPU_CE)
+	output  wire [2:0] FDC_A,
+	output  wire       FDC_WE,
+	output  wire [7:0] FDC_DAT_O,
+	input   wire [7:0] FDC_DAT_I,  // in the clock of FDC_CS
+	input   wire [7:0] SYS_CFG,    // read at port 06h (bit 0: boot from C: first)
+
 	output wire I2C_SCL,
 	inout wire I2C_SDA,
 
@@ -320,6 +328,13 @@ module system (
 	wire TANDY_PAGE_PORT = PORT_ADDR[15:0] == 16'h03df;
 	wire IDE_PORT0 = PORT_ADDR == 16'h03f6 || PORT_ADDR[15:3] == (16'h01f0 >> 3); // 0x3f6, 0x1f0-1f7
 	wire IDE_PORT1 = PORT_ADDR == 16'h0376 || PORT_ADDR[15:3] == (16'h0170 >> 3); // 0x1f6, 0x1f0-1f7
+
+	wire FDC_PORT = PORT_ADDR[15:3] == (16'h03f0 >> 3) && PORT_ADDR[2:0] != 3'd6; // 0x3f0-3f5, 3f7 (3f6: IDE)
+	wire CFG_PORT = PORT_ADDR[15:0] == 16'h0006;
+	assign FDC_CS = CPU_CE & IORQ && FDC_PORT;
+	assign FDC_A = PORT_ADDR[2:0];
+	assign FDC_WE = WR;
+	assign FDC_DAT_O = CPU_DOUT[7:0];
 
 	assign IDE_CS[0] = CPU_CE & IORQ && IDE_PORT0;
 	assign IDE_CS[1] = CPU_CE & IORQ && IDE_PORT1;
@@ -572,6 +587,8 @@ module system (
 							 ({8{OPL2_PORT}} & opl32_data)  |
 							 ({8{MPU_PORT}} & mpu_data) |
 							 ({8{CGA_CL}} & CGA_CL_DATA) |
+							 ({8{FDC_PORT}} & FDC_DAT_I) |
+							 ({8{CFG_PORT}} & SYS_CFG) |
 							 ({8{IDE_PORT0 | IDE_PORT1}} & IDE_DAT_I[7:0]);
 
 

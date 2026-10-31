@@ -1,7 +1,7 @@
 {
     "id": "next186",
     "name": "Next 186",
-    "build": "26103101",
+    "build": "26103102",
     "bitstream": "karabas_mini_top.bin",
     "visible": true,
     "type": "osd",
@@ -20,8 +20,11 @@
         {"type": "S", "name": "MIDI", "options": ["Off", "On"], "default": 1, "hotkey": "Menu+F5"},
         {"type": "S", "name": "Adlib", "options": ["On", "Hidden"], "default": 0, "hotkey": "Menu+F6"},
         {"type": "S", "name": "HDD0 Mode", "options": ["Auto", "Image", "SD2 card"], "default": 0},
+        {"type": "S", "name": "Boot", "options": ["A: then C:", "C: then A:"], "default": 0},
         {"type": "F", "name": "HDD0", "slot": 0, "extensions": ".img .vhd .bin .raw", "hotkey": "Menu+F7"},
         {"type": "F", "name": "HDD1", "slot": 1, "extensions": ".img .vhd .bin .raw", "hotkey": "Menu+F8"},
+        {"type": "F", "name": "FDD A", "slot": 2, "extensions": ".img .ima .dsk .vfd .flp", "hotkey": "Menu+F9"},
+        {"type": "F", "name": "FDD B", "slot": 3, "extensions": ".img .ima .dsk .vfd .flp", "hotkey": "Menu+F10"},
         {"type": "T", "name": "NMI", "options": null, "default": 0, "hotkey": "Menu+F12"},
         {"type": "T", "bits": 1, "name": "Reset", "options": null, "default": 0, "hotkey": "Ctrl+Alt+Del"}
     ]
