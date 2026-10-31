@@ -208,7 +208,10 @@ karabas_186 #(.BURST_MAX_MHZ(32)) karabas_186(
     .mcu_mosi      (MCU_MOSI),
     .mcu_miso      (MCU_MISO),
     .mcu_burst_cs_n(MCU_IO[0]),
-    .mcu_burst_ready(mcu_burst_ready)
+    .mcu_burst_ready(mcu_burst_ready),
+
+    .fdd_in(4'b0000),
+    .fdd_out()
 );
 
 // hdmi 

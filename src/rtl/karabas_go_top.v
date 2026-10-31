@@ -161,13 +161,10 @@ assign WRD_N        = 1'b1;
 assign WWR_N        = 1'b1;
 assign WRESET_N     = 1'b1;
 
-assign FDC_DRIVE    = 2'b00;
-assign FDC_MOTOR    = 1'b0;
-assign FDC_DIR      = 1'b0;
-assign FDC_STEP     = 1'b0;
-assign FDC_WDATA    = 1'b0;
-assign FDC_WGATE    = 1'b0;
-assign FDC_SIDE_N   = 1'b1;
+// the floppy connector: physical drives A / B (karabas_186 PHYS_FDD); high = active at the pins,
+// FDC_SIDE_N is SIDE1 there (1: head 1)
+wire [7:0] fdd_out;
+assign {FDC_WDATA, FDC_WGATE, FDC_SIDE_N, FDC_STEP, FDC_DIR, FDC_MOTOR, FDC_DRIVE[1], FDC_DRIVE[0]} = fdd_out;
 
 // system
 wire clk_vga, clk_bus, clk_adc, clk_sdr, clk_sdr_out, clk_midi;
@@ -188,7 +185,7 @@ wire mcu_burst_ready;
 assign MCU_SPI_IO[0] = mcu_burst_ready;
 assign MCU_SPI_IO[1] = 1'bz;
 
-karabas_186 karabas_186(
+karabas_186 #(.PHYS_FDD(1)) karabas_186(
     .clk           (CLK_50MHZ),
     .clk_bus       (clk_bus),
     .clk_vga       (clk_vga),
@@ -228,7 +225,10 @@ karabas_186 karabas_186(
     .mcu_miso      (MCU_MISO),
     // burst transfers: firmware IO0 (GPIO14) = MCU_SPI_IO[1] (M11), IO1 (GPIO2) = MCU_SPI_IO[0] (N9)
     .mcu_burst_cs_n (MCU_SPI_IO[1]),
-    .mcu_burst_ready(mcu_burst_ready)
+    .mcu_burst_ready(mcu_burst_ready),
+
+    .fdd_in({FDC_RDATA, FDC_WPRT, FDC_TR00, FDC_INDEX}),
+    .fdd_out(fdd_out)
 );
 
 // DAC
