@@ -5,7 +5,9 @@
 // (fdd_model.v, from karabas-go-core-pcxt) on DS1, mapped to drive A by CMD_IMG_PHYS (slot 2,
 // DS1). The port steps as the BIOS (fdxfer) does them: the geometry of the probe, a read, a write
 // and its read back, a sector of an unformatted track (error 1), a format of it (the buffer of F6,
-// command 3 on each sector) and a read of it, the write protect, an image mounted over the drive.
+// command 3 on each sector) and a read of it, a disk change (no change line: taken out with the
+// motor off, a read fails, the probe after it finds no disk; put in, the motor on: a probe), the
+// write protect, an image mounted over the drive.
 // Ends with "tb_fdd_phys: N errors". Run: src/sim/run_fdd_phys_sim.sh (iverilog, a few minutes).
 
 module tb_fdd_phys;
@@ -94,6 +96,16 @@ task wait_ready;
 	end
 endtask
 
+task wait_probe;
+	integer t;
+	begin
+		t = 0;
+		io_rd(3'd0);
+		while (rdata[3] && t < 20000000) begin io_rd(3'd0); t = t + 1; end
+		if (rdata[3]) begin $display("ERROR probe timeout"); errors = errors + 1; end
+	end
+endtask
+
 task command(input [15:0] lba, input [1:0] op);
 	begin
 		io_wr(3'd0, lba[7:0]);
@@ -157,7 +169,9 @@ initial begin
 
 	// C 9 (unformatted): not found; format C 9 H 0 (LBA 108..113), read R 4
 	command(16'd108, 2'd1);
-	check("unformatted status", rdata, 8'h51);
+	check("unformatted status", rdata, 8'h59);   // not found: a probe (maybe another disk)
+	wait_probe;
+	check("unformatted probed", rdata, 8'h51);
 	io_wr(3'd4, 8'h00);
 	for (i = 0; i < 512; i = i + 1)
 		io_wr(3'd3, 8'hF6);
@@ -171,6 +185,31 @@ initial begin
 	check("formatted status", rdata, 8'h50);
 	read_buf;
 	check("formatted byte", sec[300], 8'hF6);
+
+	// the disk out with the motor off: still there for the port; a read: no index, a probe
+	io_wr(3'd2, 8'h00);
+	drv.disk_in = 1'b0;
+	io_wr(3'd2, 8'h10);
+	io_rd(3'd0); check("out, motor on", rdata, 8'h50);
+	command(16'd34, 2'd1);
+	check("out, read", rdata, 8'h5B);
+	wait_probe;
+	check("out, probed", rdata, 8'h43);
+	$display("%0t: disk out probed: status %h", $time, rdata);
+	// in again (the motor off, as the BIOS reset does), the motor on: a probe at once
+	io_wr(3'd2, 8'h00);
+	drv.disk_in = 1'b1;
+	io_wr(3'd2, 8'h10);
+	io_rd(3'd0); check("in, motor on", rdata[3], 1'b1);
+	wait_probe;
+	check("in, probed", rdata, 8'h53);
+	$display("%0t: disk in probed: status %h", $time, rdata);
+	command(16'd34, 2'd1);
+	check("in, read", rdata, 8'h50);
+	read_buf;
+	errs0 = errors;
+	for (i = 0; i < 512; i = i + 1)
+		if (errors < errs0 + 4) check("in, read byte", sec[i], pat(2, 1, 5, i));
 
 	// write protected: probe again (the mcu maps the slot again)
 	drv.wprot = 1'b1;

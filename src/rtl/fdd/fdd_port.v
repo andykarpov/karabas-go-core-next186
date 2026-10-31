@@ -13,7 +13,9 @@
  Registers (a = port - 3F0h, one clock per access, the read data in that clock):
    0 R  status of the selected drive: 7 busy, 6 two heads, 5 write protected, 4 a disk is there,
         1..0 the error of the last command: 0 none, 1 sector not found, 2 data error (CRC, or a
-        sector the mcu could not read / write), 3 no disk
+        sector the mcu could not read / write), 3 no disk; 3 a physical drive is probed (its
+        disk and geometry not known yet: after its motor came on with no disk there, after an
+        error 1 / 3 that may be a disk change, the Go has no change line), wait for it
    0 W  LBA 7..0                1 W  LBA 15..8
    1 R  sectors per track       2 R  cylinders
    2 W  control: 0 the selected drive, 4 motor A, 5 motor B (a physical drive: selected while
@@ -90,7 +92,7 @@ reg op_go = 1'b0;
 reg p_on = 1'b0;                     // an op owns the buffer
 wire op_done;
 wire [1:0] op_err;
-wire geo_present, geo_wp;
+wire geo_present, geo_probe, geo_wp;
 wire [7:0] geo_cyl, geo_spt;
 wire [1:0] geo_heads;
 wire ph_we;
@@ -136,6 +138,7 @@ generate if (PHYS) begin : g_phys
 		.geo_upd(),
 		.geo_n(drv),
 		.geo_present(geo_present),
+		.geo_probe(geo_probe),
 		.geo_wp(geo_wp),
 		.geo_cyl(geo_cyl),
 		.geo_spt(geo_spt),
@@ -154,6 +157,7 @@ end else begin : g_no_phys
 	assign op_done = 1'b0;
 	assign op_err = 2'd0;
 	assign geo_present = 1'b0;
+	assign geo_probe = 1'b0;
 	assign geo_wp = 1'b0;
 	assign geo_cyl = 8'd0;
 	assign geo_spt = 8'd0;
@@ -187,7 +191,7 @@ wire [7:0] spt = phys_d ? geo_spt : img_spt;
 wire [7:0] cyl = phys_d ? geo_cyl : img_cyl;
 
 assign dout =
-	(a == 3'd0) ? { busy, heads2, wp, present, 2'b00, err } :
+	(a == 3'd0) ? { busy, heads2, wp, present, phys_d & geo_probe, 1'b0, err } :
 	(a == 3'd1) ? spt :
 	(a == 3'd2) ? cyl :
 	(a == 3'd3) ? buf_q :

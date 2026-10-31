@@ -2775,7 +2775,7 @@ FDLastError     equ     <ds:[41h]>
 FDMotorStatus   equ     <ds:[3fh]>
 FDMotorCount    equ     <ds:[40h]>
 FDDeadline      equ     <ds:[0b0h]> ; the tick count of the timeout of a wait
-FD_ST           equ     3f0h        ; R status (7 busy, 6 two heads, 5 write protected, 4 a disk, 1..0 error), W LBA 7..0
+FD_ST           equ     3f0h        ; R status (7 busy, 6 two heads, 5 write protected, 4 a disk, 3 probing, 1..0 error), W LBA 7..0
 FD_SPT          equ     3f1h        ; R sectors per track, W LBA 15..8
 FD_CTL          equ     3f2h        ; W 0 the drive, 4 motor A, 5 motor B; R cylinders
 FD_DATA         equ     3f3h        ; the sector buffer
@@ -3181,6 +3181,22 @@ fdw2:
 		pop     dx
 		ret
 
+fdprobe:        ; DS = 40h: wait while the core probes a physical disk (a disk change, the Go has
+		; no change line), 6 s. Returns AL = status (a timeout: no disk)
+		push    dx
+		mov     dx, ds:[6ch]
+		add     dx, 110
+		mov     FDDeadline, dx
+		mov     dx, FD_ST
+fdp1:
+		in      al, dx
+		test    al, 8
+		jz      short fdw2
+		call    fdexp
+		jnc     short fdp1
+		and     al, 0efh
+		jmp     short fdw2
+
 fd_reset proc near       ; DS = 40h: the motors off
 		push    ax
 		push    dx
@@ -3231,8 +3247,7 @@ fd_xfer proc near
 		push    dx
 		mov     dx, FD_CTL
 		out     dx, al
-		mov     dx, FD_ST
-		in      al, dx
+		call    fdprobe
 		pop     dx
 		mov     ah, 80h         ; not ready
 		test    al, 10h         ; a disk
