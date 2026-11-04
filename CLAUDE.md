@@ -21,8 +21,8 @@ The core is on branch `master`. It uses `karabas-go-modules` as the submodule `m
 
 ## Build
 
-- `src/Makefile` (ISE 14.7 command line): `make go|mini|minig`, steps `<board>-xst`, `-impl`, `-core`, `make <board>-report`. Inputs per board: `karabas_<board>_top.prj`, `.xst`, `.ut`, `karabas_<board>.ucf`. The results are `src/karabas_<board>_top.bin` and `src/next186.kg1` / `kg2` / `kg3`; ISE writes its other outputs into `src/` (in `.gitignore`). There are no `.xise` projects.
-- Packing: `src/make_core.py` is a symlink to `../../karabas-go-tools/make_core/make_core.py`, so the tools repo must sit next to this one. It packs `core.json` (Go), `core_mini.json`, `core_minig.json`. The `.bin` and `.kg*` files are committed.
+- `src/Makefile` (ISE 14.7 command line): `make go|mini|minig`, steps `<board>-xst`, `-impl`, `-core`, `make <board>-report`. Inputs per board: `karabas_<board>_top.prj`, `.xst`, `.ut`, `karabas_<board>.ucf`. The results are `src/karabas_<board>_top.bin` and `src/next186.kg` (all boards; a board build puts its bitstream in); ISE writes its other outputs into `src/` (in `.gitignore`). There are no `.xise` projects.
+- Packing: `src/make_core.py` is a symlink to `../../karabas-go-tools/make_core/make_core.py`, so the tools repo must sit next to this one. It packs `core.json` (one file for all boards: the common keys, `boards` for what differs; kgo2, karabas-go-tools `docs/kgo2.md`). The `.bin` and `.kg` files are committed.
 - BIOS: `cd src/186Code/BIOS && make` builds `BIOS_Next186.com` from `BIOS_Next186.asm` with jwasm. The Makefile builds jwasm first from `jwasm/` (`GccUnix.mak`). The `.com` is the ROM of the core files (`186Code/BIOS/BIOS_Next186.com` at address 0), so rebuild the `.kg*` after a BIOS change.
 
 ## MCU link
@@ -36,7 +36,7 @@ The core is on branch `master`. It uses `karabas-go-modules` as the submodule `m
 
 ## Release
 
-- The Go file is in the release repo `karabas-go` as `cores/next186.kg1`; the copy there is the same file as `src/next186.kg1`.
+- `next186.kg` goes into both release repos, `karabas-go` and `karabas-mini` (`cores/next186.kg`), the same file as `src/next186.kg`.
 
 ## Memory
 
