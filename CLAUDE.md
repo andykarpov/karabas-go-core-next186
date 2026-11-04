@@ -36,7 +36,7 @@ The core is on branch `master`. It uses `karabas-go-modules` as the submodule `m
 
 ## Release
 
-- `next186.kg` goes into both release repos, `karabas-go` and `karabas-mini` (`cores/next186.kg`), the same file as `src/next186.kg`.
+- `next186.kg` goes into the release repo `karabas-go` (`cores/next186.kg`, all boards; `karabas-mini` has no cores any more), the same file as `src/next186.kg`.
 
 ## Memory
 
