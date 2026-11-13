@@ -14,7 +14,7 @@
     "boards": {
         "go": {"build": "26110801", "bitstream": "karabas_go_top.bin"},
         "mini": {"build": "26110801", "bitstream": "karabas_mini_top.bin"},
-        "minig": {"build": "26110801", "bitstream": "karabas_minig_top.bin"}
+        "minig": {"link": 2, "build": "26111317", "bitstream": "karabas_minig_top.bin"}
     },
     "osd": [
     {"type": "S", "name": "Speed", "options": ["Max", "/2", "/3", "/4", "/8", "/16", "/32"], "default": 0, "hotkey": "Menu+F1", "page": 2},
