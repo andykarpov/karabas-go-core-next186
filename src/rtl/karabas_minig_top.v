@@ -162,14 +162,13 @@ wire [23:0] adc_l, adc_r;
 wire [23:0] vga_rgb;
 wire vga_hs, vga_vs, vga_blank, vga_reset, dvi_only;
 
-// burst transfers from the mcu (karabas-go-firmware docs/burst_protocol.md)
+// MCU link v2 (karabas-go-firmware docs/link_v2.md, kg_mcu2 in karabas_186): INT on IO1
 wire mcu_burst_ready;
 assign MCU_IO[1] = mcu_burst_ready;
 assign MCU_IO[0] = 1'bz;
 assign MCU_IO[5:2] = 4'bzzzz;
 
-// Rev.G has MCU_SCK on a global clock pin: bursts at up to 32 MHz
-karabas_186 #(.BURST_MAX_MHZ(32)) karabas_186(
+karabas_186 #(.BURST_MAX_MHZ(32), .LINK(2)) karabas_186(
     .clk           (CLK_50MHZ),
     .clk_bus       (clk_bus),
     .clk_vga       (clk_vga),
@@ -247,7 +246,7 @@ i2s_transceiver #(.mclk_sclk_ratio(4)) adc(
 );
 
 // i2s DAC
-PCM5102 #(.DAC_CLK_DIV_BITS(2)) PCM5102(
+kg_pcm5102 #(.DIV_BITS(2)) PCM5102(
     .clk           (clk_bus),
     .reset         (areset),
     .left          (audio_mix_l),
