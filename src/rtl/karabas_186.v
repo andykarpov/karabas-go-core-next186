@@ -3,7 +3,10 @@
 
 module karabas_186 #(
     parameter BURST_MAX_MHZ = 0, // see kg_mcu
-    parameter PHYS_FDD = 0       // 1: the physical floppy drives of the floppy connector (Karabas Go)
+    parameter PHYS_FDD = 0,      // 1: the physical floppy drives of the floppy connector (Karabas Go)
+    // the MCU link: 1 = v1 (kg_mcu, img_sdc, kg_soft_switches, overlay.vhd), 2 = v2 (kg_mcu2: its
+    // mounter, SW registers, kg_l2_osd_overlay; mcu_burst_ready is MCU_INT, mcu_burst_cs_n unused)
+    parameter LINK = 1
 )(
     input  wire         clk,
 
@@ -274,6 +277,57 @@ wire romload_active, romload_wr;
 wire [1:0] mcu_btns;
 wire mcu_dvi_only;
 
+// --------- File mounter & ATA Hard Disk ------------
+
+wire [7:0] img_mounted;
+wire [63:0] img_size;
+wire img_data_wr;
+wire [8:0] img_data_addr;
+wire [7:0] img_data;
+wire img_result_wr;
+wire [7:0] img_result;
+wire [15:0] img_sum;
+wire img_q_wr;
+wire [23:0] img_q_di;
+wire img_q_ack;
+wire img_phys_wr;
+wire [15:0] img_phys;
+
+wire [7:0] sdc_img_mounted;
+wire [63:0] sdc_img_size;
+wire sdc_busy, sdc_done, sdc_error;
+wire [2:0] sdc_slot;
+wire sdc_byte_in_strobe;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_byte_in_data;
+wire sdc_active;
+
+wire [15:0] hdf_dout;
+wire [1:0] hdf_rd, hdf_wr;
+wire [31:0] hdf_sector;
+wire [7:0] hdf_byte_out_data;
+wire hdf_own = (sdc_slot < 3'd2);
+wire fdd_own = (sdc_slot[2:1] == 2'b01);
+wire [1:0] fdd_rd, fdd_wr;
+wire [31:0] fdd_sector;
+wire [7:0] fdd_byte_out_data;
+
+// the OSD of link v2 (kg_mcu2 -> kg_l2_osd_overlay)
+wire osd_wr, osd_en, osd_zoom;
+wire [11:0] osd_waddr;
+wire [7:0] osd_wdata;
+wire [23:0] osd_fg, osd_bg;
+wire [1:0] osd_alpha, osd_place;
+wire [4:0] osd_px, osd_ph;
+wire [3:0] osd_py;
+wire [5:0] osd_pw;
+// the switches: kg_soft_switches (LINK 1) or the SW registers of kg_mcu2
+wire [111:0] softsw_regs;
+// the requests of the drives to the mounter (img_sdc of LINK 1, kg_mcu2 of LINK 2)
+wire [7:0] sdc_rd_v, sdc_wr_v, sdc_byte_out_v;
+wire [31:0] sdc_sector_v;
+
+generate if (LINK == 1) begin : mcu_link1
 kg_mcu #(
     .BURST_MAX_MHZ(BURST_MAX_MHZ),
     .CS_FILTER(3),
@@ -412,42 +466,107 @@ kg_mcu #(
     
     .BUSY(mcu_busy)
 );
+end else begin : mcu_link2
+    // the v2 events as the toggles of v1 (system takes a change of them)
+    wire [7:0] l2_ps2_code, l2_ms_x, l2_ms_y, l2_ms_z, l2_ms_b;
+    wire l2_ps2_kind, l2_ps2_wr, l2_ms_wr;
+    wire [5:0] l2_btns;
+    wire [1:0] l2_ld_kind;
+    wire l2_ld_active, l2_ld_wr;
+    wire [31:0] l2_ld_addr;
+    wire [7:0] l2_ld_data;
+    wire [15:0] l2_joy_l, l2_joy_r;
+    reg [7:0] ps2_r = 8'd0, xt_r = 8'd0;
+    reg ps2_t = 1'b0, xt_t = 1'b0, ms_t = 1'b0;
+    always @(posedge clk_bus) begin
+        if (l2_ps2_wr && !l2_ps2_kind) begin ps2_r <= l2_ps2_code; ps2_t <= ~ps2_t; end
+        if (l2_ps2_wr && l2_ps2_kind) begin xt_r <= l2_ps2_code; xt_t <= ~xt_t; end
+        if (l2_ms_wr) ms_t <= ~ms_t;
+    end
+    assign ps2_scancode = ps2_r;
+    assign ps2_scancode_upd = ps2_t;
+    assign xt_scancode = xt_r;
+    assign xt_scancode_upd = xt_t;
+    assign ms_x = l2_ms_x;
+    assign ms_y = l2_ms_y;
+    assign ms_z = l2_ms_z[3:0];
+    assign ms_b = l2_ms_b[2:0];
+    assign ms_upd = ms_t;
+    assign mcu_btns = l2_btns[1:0];
+    assign joy_l = l2_joy_l[12:0];
+    assign joy_r = l2_joy_r[12:0];
+    // the ROMs of the core file (LD kind 0) into the BIOS loader
+    assign romload_active = l2_ld_active && l2_ld_kind == 2'd0;
+    assign romload_wr = l2_ld_wr && l2_ld_kind == 2'd0;
+    assign romload_a = l2_ld_addr;
+    assign romload_d = l2_ld_data;
+    assign hwid = 8'd0;
+    assign softsw_command = 16'd0;
+    assign osd_command = 16'd0;
 
-// --------- File mounter & ATA Hard Disk ------------
+    kg_mcu2 #(
+        .SW_N(14),
+        .SW_INIT(112'h0000_0000_0000_0000_0001_0001_0000),
+        .CS_FILTER(3),
+        .ENABLE_OSD(1),
+        .ENABLE_IMG(1),        // HDD0 / HDD1 (slots 0, 1), FDD A / B (2, 3)
+        .IMG_OUT_LATENCY(3),
+        .ENABLE_AUX(1),        // the level meters of the dot matrix
+        .ENABLE_FT(0),
+        .ENABLE_SD2(0)         // the second card belongs to the SoC
+    ) mcu2(
+        .CLK(clk_bus),
+        .N_RESET(~areset),
 
-wire [7:0] img_mounted;
-wire [63:0] img_size;
-wire img_data_wr;
-wire [8:0] img_data_addr;
-wire [7:0] img_data;
-wire img_result_wr;
-wire [7:0] img_result;
-wire [15:0] img_sum;
-wire img_q_wr;
-wire [23:0] img_q_di;
-wire img_q_ack;
-wire img_phys_wr;
-wire [15:0] img_phys;
+        .MCU_SCK(mcu_sck),
+        .MCU_MOSI(mcu_mosi),
+        .MCU_MISO(mcu_miso),
+        .MCU_SS(mcu_cs_n),
+        .MCU_INT(mcu_burst_ready),
+        .MCU_SPI_FT_SS(1'b1),
+        .MCU_SPI_SD2_SS(1'b1),
 
-wire [7:0] sdc_img_mounted;
-wire [63:0] sdc_img_size;
-wire sdc_busy, sdc_done, sdc_error;
-wire [2:0] sdc_slot;
-wire sdc_byte_in_strobe;
-wire [8:0] sdc_byte_addr;
-wire [7:0] sdc_byte_in_data;
-wire sdc_active;
+        .SW(softsw_regs), .SW_WR(), .SW_INDEX(), .SW_VALUE(), .HW_ID(), .DVI_ONLY(mcu_dvi_only),
+        .CORE_BUILD(), .FW_BUILD(), .BUSY(mcu_busy), .BTNS(l2_btns), .RELOAD_REQ(1'b0), .RELOAD_CORE(8'd0),
 
-wire [15:0] hdf_dout;
-wire [1:0] hdf_rd, hdf_wr;
-wire [31:0] hdf_sector;
-wire [7:0] hdf_byte_out_data;
-wire hdf_own = (sdc_slot < 3'd2);
-wire fdd_own = (sdc_slot[2:1] == 2'b01);
-wire [1:0] fdd_rd, fdd_wr;
-wire [31:0] fdd_sector;
-wire [7:0] fdd_byte_out_data;
+        .KBD(), .KBD_WR(), .PS2_CODE(l2_ps2_code), .PS2_KIND(l2_ps2_kind), .PS2_WR(l2_ps2_wr),
+        .MS_X(l2_ms_x), .MS_Y(l2_ms_y), .MS_Z(l2_ms_z), .MS_B(l2_ms_b), .MS_WR(l2_ms_wr),
+        .JOY_L(l2_joy_l), .JOY_R(l2_joy_r), .JOY_WR(),
+        .PS2_CMD(ps2_command), .PS2_CMD_WR(ps2_command_wr),
 
+        .LD_KIND(l2_ld_kind), .LD_SLOT(), .LD_SIZE(), .LD_START(), .LD_ACTIVE(l2_ld_active), .LD_END(),
+        .LD_ADDR(l2_ld_addr), .LD_DATA(l2_ld_data), .LD_WR(l2_ld_wr), .LD_READY(1'b1),
+
+        .OSD_WR(osd_wr), .OSD_WADDR(osd_waddr), .OSD_WDATA(osd_wdata), .OSD_EN(osd_en),
+        .OSD_FG(osd_fg), .OSD_BG(osd_bg), .OSD_ALPHA(osd_alpha), .OSD_PX(osd_px), .OSD_PY(osd_py),
+        .OSD_PW(osd_pw), .OSD_PH(osd_ph), .OSD_PLACE(osd_place), .OSD_ZOOM(osd_zoom),
+
+        .SDC_IMG_MOUNTED(sdc_img_mounted), .SDC_IMG_SIZE(sdc_img_size),
+        .SDC_RD(sdc_rd_v), .SDC_WR(sdc_wr_v), .SDC_SECTOR(sdc_sector_v),
+        .SDC_BUSY(sdc_busy), .SDC_DONE(sdc_done), .SDC_ERROR(sdc_error), .SDC_SLOT(sdc_slot),
+        .SDC_BYTE_IN_STROBE(sdc_byte_in_strobe), .SDC_BYTE_ADDR(sdc_byte_addr),
+        .SDC_BYTE_IN_DATA(sdc_byte_in_data), .SDC_BYTE_OUT_DATA(sdc_byte_out_v),
+        .IMG_WP(), .IMG_PHYS_WR(img_phys_wr), .IMG_PHYS(img_phys), .IMG_FLUSH(), .FDD_CHNG_WR(), .FDD_CHNG(),
+        .FDD_CHNG_REQ(1'b0), .FDD_CHNG_DS(2'd0),
+        .BK_MOUNT(1'b0), .BK_FLUSHED(1'b0), .BK_SLOT(3'd0), .BK_SIZE(32'd0), .BK_KIND(8'd0), .BK_RESULT(8'd0),
+        .IMG_ACTIVE(sdc_active),
+
+        .PORT_OUT_DATA(), .PORT_OUT_WR(), .PORT_OUT_READY(4'b1111), .PORT_IN_DATA(32'd0), .PORT_IN_WR(4'd0),
+        .PORT_CFG(128'd0), .PORT_IN_FULL(), .PORT_STAT(), .PORT_STAT_WR(),
+        .RTC_A(8'd0), .RTC_DI(8'd0), .RTC_CS(1'b0), .RTC_WR_N(1'b1), .RTC_DO(),
+        .MATRIX_CMD(matrix_cmd), .MATRIX_CMD_WR(matrix_cmd_wr), .DEBUG_ADDR(16'd0), .DEBUG_DATA(16'd0),
+
+        .FT_SPI_ON(), .FT_VGA_ON(), .FT_RESET(), .FT_SCK(), .FT_MOSI(), .FT_MISO(1'b0), .FT_CS_N(),
+        .SD2_SCK(), .SD2_MOSI(), .SD2_MISO(1'b0), .SD2_CS_N()
+    );
+end endgenerate
+
+assign sdc_rd_v = {4'b0000, fdd_rd, hdf_rd};
+assign sdc_wr_v = {4'b0000, fdd_wr, hdf_wr};
+assign sdc_sector_v = (hdf_rd != 2'b00 || hdf_wr != 2'b00) ? hdf_sector : fdd_sector; // the lower slots go first
+assign sdc_byte_out_v = fdd_own ? fdd_byte_out_data : hdf_byte_out_data;
+
+generate if (LINK == 1) begin : img_link1
 img_sdc #(
     .OUT_LATENCY(3),
     .TIMEOUT(24'd10000000), // ~200ms at 50MHz
@@ -470,9 +589,9 @@ img_sdc #(
 
     .sdc_img_mounted(sdc_img_mounted),
     .sdc_img_size(sdc_img_size),
-    .sdc_rd({4'b0000, fdd_rd, hdf_rd}),
-    .sdc_wr({4'b0000, fdd_wr, hdf_wr}),
-    .sdc_sector((hdf_rd != 2'b00 || hdf_wr != 2'b00) ? hdf_sector : fdd_sector), // the lower slots go first
+    .sdc_rd(sdc_rd_v),
+    .sdc_wr(sdc_wr_v),
+    .sdc_sector(sdc_sector_v),
     .sdc_busy(sdc_busy),
     .sdc_done(sdc_done),
     .sdc_error(sdc_error),
@@ -480,9 +599,10 @@ img_sdc #(
     .sdc_byte_in_strobe(sdc_byte_in_strobe),
     .sdc_byte_addr(sdc_byte_addr),
     .sdc_byte_in_data(sdc_byte_in_data),
-    .sdc_byte_out_data(fdd_own ? fdd_byte_out_data : hdf_byte_out_data),
+    .sdc_byte_out_data(sdc_byte_out_v),
     .active(sdc_active)
 );
+end endgenerate
 
 
 wire hdd0_dev0_en = (kb_hdd0_mode != 2'd2);
@@ -575,7 +695,7 @@ wire [1:0] kb_hdd0_mode;
 
 // register n = OSD item n of core*.json; the file items (HDD0 8, HDD1 9, FDD A 10, FDD B 11)
 // have no register value
-wire [111:0] softsw_regs;
+generate if (LINK == 1) begin : sw_link1
 kg_soft_switches #(
     .N(14),
     .INIT(112'h0000_0000_0000_0000_0001_0001_0000)
@@ -585,6 +705,7 @@ kg_soft_switches #(
     .regs(softsw_regs),
     .upd()
 );
+end endgenerate
 
 assign kb_speed     = softsw_regs[0*8 +: 3];
 assign kb_isawait   = softsw_regs[1*8 +: 2];
@@ -624,6 +745,7 @@ bios_loader bios_loader(
 
 // --------- OSD ------------
 
+generate if (LINK == 1) begin : osd_link1
 overlay #(
     .H_OFFSET(104),
     .V_OFFSET(32)
@@ -639,6 +761,23 @@ overlay #(
 assign vga_hs = ~core_hs_d;
 assign vga_vs = ~core_vs_d;
 assign vga_blank = core_hb || core_vb_frame;
+end else begin : osd_link2
+// the bitmap OSD of link v2: centred in de, 2 clocks of latency with its syncs and de; the syncs
+// and blank of the core are those delayed as its pixels (VGA_*_D)
+wire osd_de;
+kg_l2_osd_overlay osd(
+    .wclk(clk_bus),
+    .osd_wr(osd_wr), .osd_waddr(osd_waddr), .osd_wdata(osd_wdata), .osd_en(osd_en),
+    .osd_fg(osd_fg), .osd_bg(osd_bg), .osd_alpha(osd_alpha), .osd_px(osd_px), .osd_py(osd_py),
+    .osd_pw(osd_pw), .osd_ph(osd_ph), .osd_place(osd_place), .osd_zoom(osd_zoom),
+    .icon_on(8'd0), .icon_act(8'd0),
+    .clk(clk_vga),
+    .rgb_i({core_r, 2'b00, core_g, 2'b00, core_b, 2'b00}),
+    .hs_i(~core_hs_d), .vs_i(~core_vs_d), .de_i(~(core_hb || core_vb_frame)),
+    .rgb_o(vga_rgb), .hs_o(vga_hs), .vs_o(vga_vs), .de_o(osd_de)
+);
+assign vga_blank = ~osd_de;
+end endgenerate
 assign vga_reset = core_vga_reset;
 
 // ---------- misc -----------------------
