@@ -163,13 +163,13 @@ assign MIDI_RESET_N = ~reset;
 assign FT_RESET = ~reset;
 assign ESP_RESET_N = ~reset;
 
-// burst transfers from the mcu (karabas-go-firmware docs/burst_protocol.md)
+// MCU link v2 (karabas-go-firmware docs/link_v2.md, kg_mcu2 in karabas_186): INT on the old burst ready line
 wire mcu_burst_ready;
 assign MCU_IO[1] = mcu_burst_ready;
 assign MCU_IO[0] = 1'bz;
 assign MCU_IO[3:2] = 2'bzz;
 
-karabas_186 karabas_186(
+karabas_186 #(.LINK(2)) karabas_186(
     .clk           (CLK_50MHZ),
     .clk_bus       (clk_bus),
     .clk_vga       (clk_vga),

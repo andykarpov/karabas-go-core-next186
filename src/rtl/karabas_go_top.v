@@ -180,12 +180,12 @@ assign VGA_B = vga_rgb[7:0];
 assign VGA_HS = vga_hs;
 assign VGA_VS = vga_vs;
 
-// burst transfers from the mcu (karabas-go-firmware docs/burst_protocol.md)
+// MCU link v2 (karabas-go-firmware docs/link_v2.md, kg_mcu2 in karabas_186): INT on the old burst ready line
 wire mcu_burst_ready;
 assign MCU_SPI_IO[0] = mcu_burst_ready;
 assign MCU_SPI_IO[1] = 1'bz;
 
-karabas_186 #(.PHYS_FDD(1)) karabas_186(
+karabas_186 #(.PHYS_FDD(1), .LINK(2)) karabas_186(
     .clk           (CLK_50MHZ),
     .clk_bus       (clk_bus),
     .clk_vga       (clk_vga),

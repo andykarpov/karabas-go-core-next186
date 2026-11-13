@@ -12,8 +12,8 @@
     {"filename": "186Code/BIOS/BIOS_Next186.com", "address": 0}
     ],
     "boards": {
-        "go": {"build": "26110801", "bitstream": "karabas_go_top.bin"},
-        "mini": {"build": "26110801", "bitstream": "karabas_mini_top.bin"},
+        "go": {"link": 2, "build": "26111331", "bitstream": "karabas_go_top.bin"},
+        "mini": {"link": 2, "build": "26111331", "bitstream": "karabas_mini_top.bin"},
         "minig": {"link": 2, "build": "26111317", "bitstream": "karabas_minig_top.bin"}
     },
     "osd": [
