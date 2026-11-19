@@ -12,7 +12,7 @@ A port of the Next186 core (from ZXDOS+) to the Karabas Go hardware
 
 ## TODO:
 
-- RS232 over USB
+- RS232 over USB, on the core serial port of the board (the second USB serial port, `/dev/serial/by-id/usb-Karabas_Go_<serial>-if02` on Linux)
 - MIDI via MPU401 + ADC
 - CF card as HDD
 - Joystick support
