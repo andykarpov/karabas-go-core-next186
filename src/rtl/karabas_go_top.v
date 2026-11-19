@@ -253,9 +253,9 @@ ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) midi_oddr2 (
     .Q(MIDI_CLK), .C0(clk_midi), .C1(!clk_midi), .CE(1'b1), .D0(1'b1), .D1(1'b0), .R(1'b0), .S(1'b0)
 );
 
-// video clk out
+// the pixel clock of the VGA DAC, inverted: the DAC takes the pixel on the rising V_CLK, the middle of the pixel
 ODDR2 #(.DDR_ALIGNMENT("NONE"), .INIT(1'b0), .SRTYPE("SYNC")) vclk_oddr2 (
-    .Q(V_CLK), .C0(clk_vga), .C1(!clk_vga), .CE(1'b1), .D0(1'b1), .D1(1'b0), .R(1'b0), .S(1'b0)
+    .Q(V_CLK), .C0(clk_vga), .C1(!clk_vga), .CE(1'b1), .D0(1'b0), .D1(1'b1), .R(1'b0), .S(1'b0)
 );
 
 endmodule
